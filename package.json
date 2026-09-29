@@ -12,9 +12,12 @@
     "format:check": "prettier --check .",
     "preview": "vite preview",
     "tauri": "tauri",
-    "tauri:dev": "scripts\\with-msvc.bat pnpm tauri dev",
-    "tauri:build": "scripts\\with-msvc.bat pnpm tauri build",
-    "tauri:build:debug": "scripts\\with-msvc.bat pnpm tauri build --debug"
+    "tauri:dev:win": "scripts\\with-msvc.bat pnpm tauri dev",
+    "tauri:build:win": "scripts\\with-msvc.bat pnpm tauri build",
+    "tauri:build:win:debug": "scripts\\with-msvc.bat pnpm tauri build --debug",
+    "tauri:dev:linux": "pnpm tauri dev",
+    "tauri:build:linux": "pnpm tauri build",
+    "tauri:build:linux:debug": "pnpm tauri build --debug"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
