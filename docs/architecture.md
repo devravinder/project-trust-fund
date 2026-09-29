@@ -107,3 +107,19 @@ All computable with SQL aggregations against the local SQLite replica.
 
 - **If it works** → full offline/sync design proceeds as above.
 - **Fallback** → use the libSQL **remote** client (still direct, no backend) with a manual local cache; loses seamless embedded-replica offline model.
+
+### Spike status — Windows desktop: PASSED
+
+Validated `libsql` on the Tauri Rust core (Windows), with a create/insert/read
+round-trip executed via a unit test (`db::tests::local_smoke_test_round_trips`).
+
+Key findings:
+- Use **`libsql = "0.9"`** (0.9.30). Version **0.6 fails to build on Windows** —
+  its `libsql-ffi` build script calls Unix `cp`; 0.9.30 falls back to `fs::copy`.
+- Building requires a **C compiler**: initialize the **MSVC dev environment**
+  (`vcvars64.bat`) before `cargo`/`tauri` build/dev, so the bundled `sqlite3.c`
+  compiles. (VS 2026 BuildTools with the C++ workload is installed here.)
+- Embedded-replica connect (`open_embedded_replica`) compiles; live sync against
+  a real Turso DB is exercised in Phase 2 (needs credentials).
+- **Android** embedded-replica remains to be validated when the Android target
+  is set up (separate spike).
