@@ -15,17 +15,17 @@ Track all work here. Complete tasks **one by one**; after each completed task, d
 ---
 
 ## Phase 0 — Foundation & setup
-- [ ] Initialize git repo (if not already) and add `.gitignore`
-- [ ] Validate spike: libSQL embedded replica via Tauri command (defer Android test; confirm on desktop first)
-- [ ] Scaffold Tauri v2 + React + TypeScript + Vite project
-- [ ] Add Tailwind CSS + shadcn/ui
-- [ ] Add base tooling: ESLint, Prettier, TypeScript strict config
-- [ ] Set up app shell: routing (React Router), layout, navigation
+- [x] Initialize git repo (if not already) and add `.gitignore`
+- [x] Validate spike: libSQL embedded replica via Tauri command (desktop confirmed; Android deferred)
+- [x] Scaffold Tauri v2 + React + TypeScript + Vite project
+- [x] Add Tailwind CSS + shadcn/ui
+- [x] Add base tooling: Prettier, TypeScript strict config (oxlint from scaffold)
+- [x] Set up app shell: routing (React Router), layout, navigation
 
 ## Phase 1 — Data layer (Rust core)
-- [ ] Add `libsql` Rust crate to Tauri core
-- [ ] Implement DB init: local SQLite file + embedded replica connect (BYODB creds)
-- [ ] Create schema migrations (borrowers, loans, payments, installment_schedule, app_meta)
+- [x] Add `libsql` Rust crate to Tauri core
+- [x] Implement DB init: local SQLite file + embedded replica connect (BYODB creds)
+- [x] Create schema migrations (borrowers, loans, payments, installment_schedule, app_meta)
 - [ ] Implement secure credential storage (Tauri Store / OS keystore) for Turso URL + token
 - [ ] Expose DB operations to React via Tauri commands (IPC)
 - [ ] Seed/dev helper for local test data
@@ -89,4 +89,10 @@ Track all work here. Complete tasks **one by one**; after each completed task, d
 ---
 
 ## Commit log (running)
-- (record each commit message here as tasks complete)
+- Add tasks.md and scope docs (v1 simple interest, Windows first)
+- Scaffold Tauri v2 + React + TS project; add gitignore and cargo net config
+- Add Tailwind CSS v4 and shadcn/ui setup with path alias
+- Add Prettier, enable strict TypeScript, add tooling scripts
+- Add app shell: routing, responsive layout, nav, placeholder pages
+- Validate libsql spike on Windows (libsql 0.9, MSVC required)
+- Add data layer: DbState, schema migrations, connect commands

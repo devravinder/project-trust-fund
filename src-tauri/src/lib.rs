@@ -1,8 +1,19 @@
+mod credentials;
 mod db;
 mod migrations;
 
+use credentials::TursoCredentials;
 use db::DbState;
 use tauri::Manager;
+
+fn app_local_db_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("app_data_dir: {e}"))?;
+    std::fs::create_dir_all(&dir).map_err(|e| format!("create dir: {e}"))?;
+    Ok(dir.join("trustfund.db"))
+}
 
 /// Connect to a local-only database in the app data dir (dev/offline fallback).
 #[tauri::command]
@@ -10,13 +21,57 @@ async fn db_connect_local(
     app: tauri::AppHandle,
     state: tauri::State<'_, DbState>,
 ) -> Result<(), String> {
-    let dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("app_data_dir: {e}"))?;
-    std::fs::create_dir_all(&dir).map_err(|e| format!("create dir: {e}"))?;
-    let path = dir.join("trustfund.db");
+    let path = app_local_db_path(&app)?;
     state.open_local(&path).await.map_err(|e| e.to_string())
+}
+
+/// Validate + connect using Turso credentials, then persist them on success.
+#[tauri::command]
+async fn db_connect_turso(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, DbState>,
+    sync_url: String,
+    auth_token: String,
+) -> Result<(), String> {
+    let path = app_local_db_path(&app)?;
+    state
+        .open_embedded_replica(&path, sync_url.clone(), auth_token.clone())
+        .await
+        .map_err(|e| e.to_string())?;
+    // Persist only after a successful connect.
+    credentials::save(&app, &TursoCredentials { sync_url, auth_token })?;
+    Ok(())
+}
+
+/// On startup: if credentials exist, connect with them; else report not-configured.
+#[tauri::command]
+async fn db_connect_saved(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, DbState>,
+) -> Result<bool, String> {
+    match credentials::load(&app)? {
+        Some(creds) => {
+            let path = app_local_db_path(&app)?;
+            state
+                .open_embedded_replica(&path, creds.sync_url, creds.auth_token)
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(true)
+        }
+        None => Ok(false),
+    }
+}
+
+/// Whether credentials are stored.
+#[tauri::command]
+fn db_has_credentials(app: tauri::AppHandle) -> Result<bool, String> {
+    Ok(credentials::load(&app)?.is_some())
+}
+
+/// Forget credentials (disconnect on next launch).
+#[tauri::command]
+fn db_clear_credentials(app: tauri::AppHandle) -> Result<(), String> {
+    credentials::clear(&app)
 }
 
 /// Returns whether a database connection is currently open.
@@ -25,9 +80,16 @@ async fn db_is_connected(state: tauri::State<'_, DbState>) -> Result<bool, Strin
     Ok(state.is_connected().await)
 }
 
+/// Trigger a manual sync with the remote (no-op for local-only).
+#[tauri::command]
+async fn db_sync(state: tauri::State<'_, DbState>) -> Result<(), String> {
+    state.sync().await.map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_store::Builder::default().build())
         .manage(DbState::default())
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -39,7 +101,15 @@ pub fn run() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![db_connect_local, db_is_connected])
+        .invoke_handler(tauri::generate_handler![
+            db_connect_local,
+            db_connect_turso,
+            db_connect_saved,
+            db_has_credentials,
+            db_clear_credentials,
+            db_is_connected,
+            db_sync,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
