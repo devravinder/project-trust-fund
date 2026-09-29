@@ -5,6 +5,8 @@ import type {
   Loan,
   LoanInput,
   LoanStatus,
+  Payment,
+  PaymentInput,
   ScheduleItem,
 } from '@/types'
 
@@ -13,6 +15,10 @@ export interface LoanSummary extends Loan {
   principal_recovered: number
   interest_collected: number
   outstanding_principal: number
+}
+
+export interface PaymentView extends Payment {
+  borrower_name: string
 }
 
 // ---- Database / connection ----
@@ -53,4 +59,14 @@ export const loans = {
     invoke<void>('loan_set_status', { id, status }),
   remove: (id: string) => invoke<void>('loan_delete', { id }),
   schedule: (id: string) => invoke<ScheduleItem[]>('loan_schedule', { id }),
+}
+
+// ---- Payments ----
+
+export const payments = {
+  list: (search?: string) => invoke<PaymentView[]>('payments_list', { search }),
+  forLoan: (loanId: string) =>
+    invoke<Payment[]>('payments_for_loan', { loanId }),
+  create: (input: PaymentInput) => invoke<Payment>('payment_create', { input }),
+  remove: (id: string) => invoke<void>('payment_delete', { id }),
 }
