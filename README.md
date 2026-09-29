@@ -44,6 +44,12 @@ Web is **not supported** in the offline design — the embedded replica cannot r
 
 Fully free: Tauri, React/Vite (open source) + Turso free tier (on each user's own account).
 
+## Scope & roadmap
+
+- **v1:** Simple interest only; zero-interest allowed (track-only). **Windows desktop** first.
+- **Then:** Android, then Linux.
+- **v2:** Compound interest.
+
 ## Status
 
-Early stage. One technical risk to validate first: **libSQL embedded replica (Rust crate) driven via Tauri commands on Android.** See [`docs/architecture.md`](docs/architecture.md).
+Early stage. One technical risk to validate first: **libSQL embedded replica (Rust crate) driven via Tauri commands on Android.** See [`docs/architecture.md`](docs/architecture.md). Task tracking in [`tasks.md`](tasks.md).

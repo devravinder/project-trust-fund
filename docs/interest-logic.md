@@ -2,6 +2,11 @@
 
 The financial core of the app. All balances, dashboard totals, and reports derive from these rules.
 
+## Versioning
+
+- **v1:** Simple interest only. **Zero interest allowed** (rate = 0) for lending to friends where you only want to track principal.
+- **v2:** Compound interest.
+
 ## Global rules
 
 - **Rate is always monthly.**
@@ -18,6 +23,7 @@ The financial core of the app. All balances, dashboard totals, and reports deriv
 - Interest after *n* whole months = `principal × monthly_rate × n`
 - **Early payoff:** pro-rated to actual elapsed whole months.
 - Freezes at Term end.
+- **Zero interest (rate = 0):** allowed — interest is always 0, loan tracks principal only.
 
 ### Compound interest
 - Interest capitalizes **monthly** on the anniversary; it accrues on **principal + previously accumulated interest**.
