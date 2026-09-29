@@ -1,5 +1,19 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Borrower, BorrowerInput } from '@/types'
+import type {
+  Borrower,
+  BorrowerInput,
+  Loan,
+  LoanInput,
+  LoanStatus,
+  ScheduleItem,
+} from '@/types'
+
+export interface LoanSummary extends Loan {
+  borrower_name: string
+  principal_recovered: number
+  interest_collected: number
+  outstanding_principal: number
+}
 
 // ---- Database / connection ----
 
@@ -26,4 +40,17 @@ export const borrowers = {
   remove: (id: string) => invoke<void>('borrower_delete', { id }),
   totalOutstanding: (id: string) =>
     invoke<number>('borrower_total_outstanding', { id }),
+}
+
+// ---- Loans ----
+
+export const loans = {
+  list: (status?: LoanStatus | 'all', search?: string) =>
+    invoke<LoanSummary[]>('loans_list', { status, search }),
+  get: (id: string) => invoke<Loan | null>('loan_get', { id }),
+  create: (input: LoanInput) => invoke<Loan>('loan_create', { input }),
+  setStatus: (id: string, status: LoanStatus) =>
+    invoke<void>('loan_set_status', { id, status }),
+  remove: (id: string) => invoke<void>('loan_delete', { id }),
+  schedule: (id: string) => invoke<ScheduleItem[]>('loan_schedule', { id }),
 }
