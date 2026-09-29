@@ -21,6 +21,25 @@ export interface PaymentView extends Payment {
   borrower_name: string
 }
 
+export interface DashboardSummary {
+  total_lent: number
+  outstanding_principal: number
+  active_loans: number
+  overdue_loans: number
+  overdue_amount: number
+  interest_collected: number
+  interest_due_this_month: number
+  principal_recovered: number
+}
+
+export interface DueItem {
+  loan_id: string
+  borrower_name: string
+  due_date: string
+  total_due: number
+  status: string
+}
+
 // ---- Database / connection ----
 
 export const db = {
@@ -69,4 +88,11 @@ export const payments = {
     invoke<Payment[]>('payments_for_loan', { loanId }),
   create: (input: PaymentInput) => invoke<Payment>('payment_create', { input }),
   remove: (id: string) => invoke<void>('payment_delete', { id }),
+}
+
+// ---- Dashboard ----
+
+export const dashboard = {
+  summary: () => invoke<DashboardSummary>('dashboard_summary'),
+  dues: (limit?: number) => invoke<DueItem[]>('dashboard_dues', { limit }),
 }
