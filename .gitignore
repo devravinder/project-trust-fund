@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+dist/
+dist-ssr/
+build/
+out/
+
+# Rust / Tauri
+src-tauri/target/
+target/
+**/*.rs.bk
+*.pdb
+
+# Local DB / replica files
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+local-replica/
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.log
+
+# Vite cache
+.vite/

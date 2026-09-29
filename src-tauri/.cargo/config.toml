@@ -1,0 +1,12 @@
+# Project-local cargo settings.
+# The internal JFrog sparse registry can be slow; give downloads more time
+# and more retries before failing. Registry itself is configured globally
+# in ~/.cargo/config.toml (artifactory-remote).
+[net]
+retry = 10
+git-fetch-with-cli = true
+
+[http]
+timeout = 120
+multiplexing = false
+low-speed-limit = 1
