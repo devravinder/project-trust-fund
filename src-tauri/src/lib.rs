@@ -6,6 +6,7 @@ mod models;
 mod repo_borrowers;
 mod repo_loans;
 mod repo_payments;
+mod repo_reports;
 mod repo_stats;
 mod util;
 
@@ -14,6 +15,7 @@ use db::DbState;
 use models::{Borrower, BorrowerInput, Loan, LoanInput, Payment, PaymentInput, ScheduleItem};
 use repo_loans::LoanSummary;
 use repo_payments::PaymentView;
+use repo_reports::{MonthlyPoint, PersonReport};
 use repo_stats::{DashboardSummary, DueItem};
 use tauri::Manager;
 
@@ -305,6 +307,26 @@ async fn dashboard_dues(
         .map_err(|e| e.to_string())
 }
 
+// ---- Reports ----
+
+#[tauri::command]
+async fn report_monthly(
+    state: tauri::State<'_, DbState>,
+) -> Result<Vec<MonthlyPoint>, String> {
+    let conn = state.conn().await.map_err(|e| e.to_string())?;
+    repo_reports::monthly(&conn).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn report_by_person(
+    state: tauri::State<'_, DbState>,
+) -> Result<Vec<PersonReport>, String> {
+    let conn = state.conn().await.map_err(|e| e.to_string())?;
+    repo_reports::by_person(&conn)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -346,6 +368,8 @@ pub fn run() {
             payment_delete,
             dashboard_summary,
             dashboard_dues,
+            report_monthly,
+            report_by_person,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
