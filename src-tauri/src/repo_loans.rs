@@ -75,8 +75,8 @@ pub async fn list(
     while let Some(row) = rows.next().await? {
         let loan = map_row(&row)?;
         let borrower_name: String = row.get(12)?;
-        let principal_recovered: f64 = row.get(13)?;
-        let interest_collected: f64 = row.get(14)?;
+        let principal_recovered: f64 = crate::util::get_f64(&row, 13)?;
+        let interest_collected: f64 = crate::util::get_f64(&row, 14)?;
         out.push(LoanSummary {
             outstanding_principal: round2(loan.principal - principal_recovered),
             loan,

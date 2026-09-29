@@ -123,7 +123,7 @@ pub async fn total_outstanding(conn: &Connection, borrower_id: &str) -> Result<f
         )
         .await?;
     if let Some(row) = rows.next().await? {
-        Ok(row.get::<f64>(0)?)
+        Ok(crate::util::get_f64(&row, 0)?)
     } else {
         Ok(0.0)
     }

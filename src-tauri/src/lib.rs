@@ -5,12 +5,14 @@ mod migrations;
 mod models;
 mod repo_borrowers;
 mod repo_loans;
+mod repo_payments;
 mod util;
 
 use credentials::TursoCredentials;
 use db::DbState;
-use models::{Borrower, BorrowerInput, Loan, LoanInput, ScheduleItem};
+use models::{Borrower, BorrowerInput, Loan, LoanInput, Payment, PaymentInput, ScheduleItem};
 use repo_loans::LoanSummary;
+use repo_payments::PaymentView;
 use tauri::Manager;
 
 fn app_local_db_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
@@ -233,6 +235,53 @@ async fn loan_schedule(
         .map_err(|e| e.to_string())
 }
 
+// ---- Payments ----
+
+#[tauri::command]
+async fn payments_list(
+    state: tauri::State<'_, DbState>,
+    search: Option<String>,
+) -> Result<Vec<PaymentView>, String> {
+    let conn = state.conn().await.map_err(|e| e.to_string())?;
+    repo_payments::list(&conn, search)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn payments_for_loan(
+    state: tauri::State<'_, DbState>,
+    loan_id: String,
+) -> Result<Vec<Payment>, String> {
+    let conn = state.conn().await.map_err(|e| e.to_string())?;
+    repo_payments::list_for_loan(&conn, &loan_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn payment_create(
+    state: tauri::State<'_, DbState>,
+    input: PaymentInput,
+) -> Result<Payment, String> {
+    let conn = state.conn().await.map_err(|e| e.to_string())?;
+    let result = repo_payments::create(&conn, input)
+        .await
+        .map_err(|e| e.to_string())?;
+    let _ = state.sync().await;
+    Ok(result)
+}
+
+#[tauri::command]
+async fn payment_delete(state: tauri::State<'_, DbState>, id: String) -> Result<(), String> {
+    let conn = state.conn().await.map_err(|e| e.to_string())?;
+    repo_payments::soft_delete(&conn, &id)
+        .await
+        .map_err(|e| e.to_string())?;
+    let _ = state.sync().await;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -268,6 +317,10 @@ pub fn run() {
             loan_set_status,
             loan_delete,
             loan_schedule,
+            payments_list,
+            payments_for_loan,
+            payment_create,
+            payment_delete,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
