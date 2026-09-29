@@ -1,13 +1,16 @@
 mod credentials;
 mod db;
+mod interest;
 mod migrations;
 mod models;
 mod repo_borrowers;
+mod repo_loans;
 mod util;
 
 use credentials::TursoCredentials;
 use db::DbState;
-use models::{Borrower, BorrowerInput};
+use models::{Borrower, BorrowerInput, Loan, LoanInput, ScheduleItem};
+use repo_loans::LoanSummary;
 use tauri::Manager;
 
 fn app_local_db_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
@@ -162,6 +165,74 @@ async fn borrower_total_outstanding(
         .map_err(|e| e.to_string())
 }
 
+// ---- Loans ----
+
+#[tauri::command]
+async fn loans_list(
+    state: tauri::State<'_, DbState>,
+    status: Option<String>,
+    search: Option<String>,
+) -> Result<Vec<LoanSummary>, String> {
+    let conn = state.conn().await.map_err(|e| e.to_string())?;
+    repo_loans::list(&conn, status, search)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn loan_get(state: tauri::State<'_, DbState>, id: String) -> Result<Option<Loan>, String> {
+    let conn = state.conn().await.map_err(|e| e.to_string())?;
+    repo_loans::get(&conn, &id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn loan_create(
+    state: tauri::State<'_, DbState>,
+    input: LoanInput,
+) -> Result<Loan, String> {
+    let conn = state.conn().await.map_err(|e| e.to_string())?;
+    let result = repo_loans::create(&conn, input)
+        .await
+        .map_err(|e| e.to_string())?;
+    let _ = state.sync().await;
+    Ok(result)
+}
+
+#[tauri::command]
+async fn loan_set_status(
+    state: tauri::State<'_, DbState>,
+    id: String,
+    status: String,
+) -> Result<(), String> {
+    let conn = state.conn().await.map_err(|e| e.to_string())?;
+    repo_loans::set_status(&conn, &id, &status)
+        .await
+        .map_err(|e| e.to_string())?;
+    let _ = state.sync().await;
+    Ok(())
+}
+
+#[tauri::command]
+async fn loan_delete(state: tauri::State<'_, DbState>, id: String) -> Result<(), String> {
+    let conn = state.conn().await.map_err(|e| e.to_string())?;
+    repo_loans::soft_delete(&conn, &id)
+        .await
+        .map_err(|e| e.to_string())?;
+    let _ = state.sync().await;
+    Ok(())
+}
+
+#[tauri::command]
+async fn loan_schedule(
+    state: tauri::State<'_, DbState>,
+    id: String,
+) -> Result<Vec<ScheduleItem>, String> {
+    let conn = state.conn().await.map_err(|e| e.to_string())?;
+    repo_loans::schedule(&conn, &id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -191,6 +262,12 @@ pub fn run() {
             borrower_update,
             borrower_delete,
             borrower_total_outstanding,
+            loans_list,
+            loan_get,
+            loan_create,
+            loan_set_status,
+            loan_delete,
+            loan_schedule,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
