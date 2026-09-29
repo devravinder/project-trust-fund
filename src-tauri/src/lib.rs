@@ -6,6 +6,7 @@ mod models;
 mod repo_borrowers;
 mod repo_loans;
 mod repo_payments;
+mod repo_stats;
 mod util;
 
 use credentials::TursoCredentials;
@@ -13,6 +14,7 @@ use db::DbState;
 use models::{Borrower, BorrowerInput, Loan, LoanInput, Payment, PaymentInput, ScheduleItem};
 use repo_loans::LoanSummary;
 use repo_payments::PaymentView;
+use repo_stats::{DashboardSummary, DueItem};
 use tauri::Manager;
 
 fn app_local_db_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
@@ -282,6 +284,27 @@ async fn payment_delete(state: tauri::State<'_, DbState>, id: String) -> Result<
     Ok(())
 }
 
+// ---- Dashboard ----
+
+#[tauri::command]
+async fn dashboard_summary(
+    state: tauri::State<'_, DbState>,
+) -> Result<DashboardSummary, String> {
+    let conn = state.conn().await.map_err(|e| e.to_string())?;
+    repo_stats::summary(&conn).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn dashboard_dues(
+    state: tauri::State<'_, DbState>,
+    limit: Option<i64>,
+) -> Result<Vec<DueItem>, String> {
+    let conn = state.conn().await.map_err(|e| e.to_string())?;
+    repo_stats::dues_this_month(&conn, limit.unwrap_or(5))
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -321,6 +344,8 @@ pub fn run() {
             payments_for_loan,
             payment_create,
             payment_delete,
+            dashboard_summary,
+            dashboard_dues,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
