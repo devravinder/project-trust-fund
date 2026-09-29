@@ -4708,6 +4708,7 @@ dependencies = [
 name = "trust-fund"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "libsql",
  "log",
  "serde",
@@ -4718,6 +4719,7 @@ dependencies = [
  "tauri-plugin-store",
  "thiserror 2.0.21",
  "tokio",
+ "uuid",
 ]
 
 [[package]]
