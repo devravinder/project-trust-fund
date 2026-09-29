@@ -1,30 +1,34 @@
 mod db;
+mod migrations;
 
+use db::DbState;
 use tauri::Manager;
 
-/// Spike command: opens a local libSQL DB in the app data dir and runs a
-/// create/insert/read round-trip. Proves libsql works from a Tauri command.
+/// Connect to a local-only database in the app data dir (dev/offline fallback).
 #[tauri::command]
-async fn db_spike(app: tauri::AppHandle) -> Result<String, String> {
+async fn db_connect_local(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, DbState>,
+) -> Result<(), String> {
     let dir = app
         .path()
         .app_data_dir()
         .map_err(|e| format!("app_data_dir: {e}"))?;
     std::fs::create_dir_all(&dir).map_err(|e| format!("create dir: {e}"))?;
-    let path = dir.join("spike.db");
+    let path = dir.join("trustfund.db");
+    state.open_local(&path).await.map_err(|e| e.to_string())
+}
 
-    let conn = db::open_local(&path)
-        .await
-        .map_err(|e| format!("open_local: {e}"))?;
-    let value = db::smoke_test(&conn)
-        .await
-        .map_err(|e| format!("smoke_test: {e}"))?;
-    Ok(format!("local libSQL round-trip returned: '{value}'"))
+/// Returns whether a database connection is currently open.
+#[tauri::command]
+async fn db_is_connected(state: tauri::State<'_, DbState>) -> Result<bool, String> {
+    Ok(state.is_connected().await)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(DbState::default())
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -35,7 +39,7 @@ pub fn run() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![db_spike])
+        .invoke_handler(tauri::generate_handler![db_connect_local, db_is_connected])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
