@@ -40,6 +40,22 @@ export interface DueItem {
   status: string
 }
 
+export interface MonthlyPoint {
+  month: string
+  interest_collected: number
+  principal_recovered: number
+  total_collected: number
+}
+
+export interface PersonReport {
+  borrower_id: string
+  borrower_name: string
+  total_lent: number
+  principal_recovered: number
+  interest_collected: number
+  outstanding_principal: number
+}
+
 // ---- Database / connection ----
 
 export const db = {
@@ -95,4 +111,11 @@ export const payments = {
 export const dashboard = {
   summary: () => invoke<DashboardSummary>('dashboard_summary'),
   dues: (limit?: number) => invoke<DueItem[]>('dashboard_dues', { limit }),
+}
+
+// ---- Reports ----
+
+export const reports = {
+  monthly: () => invoke<MonthlyPoint[]>('report_monthly'),
+  byPerson: () => invoke<PersonReport[]>('report_by_person'),
 }
