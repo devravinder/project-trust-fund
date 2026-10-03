@@ -50,6 +50,22 @@ Fully free: Tauri, React/Vite (open source) + Turso free tier (on each user's ow
 - **Then:** Android, then Linux.
 - **v2:** Compound interest.
 
+## Development
+
+Prereqs: Node + pnpm, Rust (via rustup). Install deps with `pnpm install`.
+
+| Platform | Run (dev) | Build |
+|---|---|---|
+| Windows desktop | `pnpm run tauri:dev:win` | `pnpm run tauri:build:win` |
+| Linux desktop | `pnpm run tauri:dev:linux` | `pnpm run tauri:build:linux` |
+| Android (from Linux) | `pnpm run android:dev:linux` | `pnpm run android:build:apk:linux` |
+| Android (from Windows) | `pnpm run android:dev:win` | `pnpm run android:build:apk:win` |
+
+Windows scripts auto-initialize the MSVC C++ toolchain (needed to compile
+libSQL's bundled SQLite). Android requires a one-time `android:init` plus the
+Android SDK/NDK + JDK. Full per-OS setup, including Linux system packages and
+Android signing: [`docs/platform-setup.md`](docs/platform-setup.md).
+
 ## Status
 
 Early stage. One technical risk to validate first: **libSQL embedded replica (Rust crate) driven via Tauri commands on Android.** See [`docs/architecture.md`](docs/architecture.md). Task tracking in [`tasks.md`](tasks.md).

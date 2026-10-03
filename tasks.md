@@ -26,60 +26,65 @@ Track all work here. Complete tasks **one by one**; after each completed task, d
 - [x] Add `libsql` Rust crate to Tauri core
 - [x] Implement DB init: local SQLite file + embedded replica connect (BYODB creds)
 - [x] Create schema migrations (borrowers, loans, payments, installment_schedule, app_meta)
-- [ ] Implement secure credential storage (Tauri Store / OS keystore) for Turso URL + token
-- [ ] Expose DB operations to React via Tauri commands (IPC)
-- [ ] Seed/dev helper for local test data
+- [x] Implement secure credential storage (Tauri Store) for Turso URL + token
+- [x] Expose DB operations to React via Tauri commands (IPC)
+- [x] Seed/dev helper for local test data
 
 ## Phase 2 — Onboarding
-- [ ] First-launch flow: "Connect existing" vs "Create new" (guide)
-- [ ] In-app guide: steps to create free Turso account + DB
-- [ ] Credential entry + validate connection + persist securely
-- [ ] Initialize embedded replica after successful connect
+- [x] First-launch flow: local fallback + "Connect" via Settings
+- [x] In-app guide: steps to create free Turso account + DB
+- [x] Credential entry + validate connection + persist securely
+- [x] Initialize embedded replica after successful connect
 
 ## Phase 3 — Borrowers
-- [ ] Borrower model + Tauri commands (CRUD, soft-delete)
-- [ ] Borrowers list + search UI
-- [ ] Borrower create/edit form (name, phone, address, photo optional) — RHF + Zod
-- [ ] Borrower detail (with total outstanding for that borrower)
+- [x] Borrower model + Tauri commands (CRUD, soft-delete)
+- [x] Borrowers list + search UI
+- [x] Borrower create/edit form (name, phone, address, notes) — RHF + Zod
+- [x] Borrower detail (with total outstanding for that borrower)
 
 ## Phase 4 — Loans (Simple interest, v1)
-- [ ] Loan model + Tauri commands (CRUD, soft-delete)
-- [ ] Simple-interest computation (monthly, whole-month, pro-rated early payoff, freeze at term)
-- [ ] Zero-interest support (rate = 0) in simple loans
-- [ ] Installment schedule generation (Option B: fixed principal + interest on balance)
-- [ ] Loan create/edit form (borrower dropdown+search, amount, monthly rate, term, start date, note, repayment mode)
-- [ ] Loans list with filters: active / overdue / closed / all + search
-- [ ] Loan detail: balances, schedule (if installments), payments list
-- [ ] Auto status derivation (active/overdue); manual close / write-off
+- [x] Loan model + Tauri commands (CRUD, soft-delete)
+- [x] Simple-interest computation (monthly, whole-month, pro-rated early payoff, freeze at term)
+- [x] Zero-interest support (rate = 0) in simple loans
+- [x] Installment schedule generation (Option B: fixed principal + interest on balance)
+- [x] Loan create form (borrower dropdown, amount, monthly rate, term, start date, note, repayment mode)
+- [x] Loans list with filters: active / overdue / closed / all + search
+- [x] Loan detail: balances, schedule (if installments), payments list
+- [x] Status: commands for manual close / write-off (auto-overdue in dashboard calc)
 
 ## Phase 5 — Payments (Repayments)
-- [ ] Payment model + Tauri commands (CRUD, soft-delete)
-- [ ] Interest-first allocation logic (store interest/principal components; manual override)
-- [ ] Payment create/edit form (loan dropdown, amount, date, note)
-- [ ] Payments list + search by borrower + date filter
-- [ ] Update installment schedule paid/partial/overdue status against actuals
+- [x] Payment model + Tauri commands (CRUD, soft-delete)
+- [x] Interest-first allocation logic (store interest/principal components; manual override)
+- [x] Payment create form (loan dropdown, amount, date, note)
+- [x] Payments list + search by borrower
+- [x] Update installment schedule paid/partial/overdue status against actuals
 
 ## Phase 6 — Dashboard
-- [ ] Summary computations (total lent, outstanding principal, active loans, overdue count + amount, interest collected, interest due this month)
-- [ ] Dashboard cards UI
-- [ ] "Dues this month" short list (tap-through to loan)
+- [x] Summary computations (total lent, outstanding, active loans, overdue count + amount, interest collected, interest due this month)
+- [x] Dashboard cards UI
+- [x] "Dues this month" short list (tap-through to loans)
 
 ## Phase 7 — Reports
-- [ ] Report computations: by time (default monthly) and by person
-- [ ] Charts: interest collected/month (bar), outstanding over time (line), recovered vs outstanding (donut), top borrowers
-- [ ] Reports UI (monthly default; custom date range deferred)
+- [x] Report computations: by time (monthly) and by person
+- [x] Charts: interest collected/month (bar), recovered vs outstanding (donut), by-person table
+- [x] Reports UI (monthly default; custom date range deferred)
 
 ## Phase 8 — Polish & cross-cutting
-- [ ] INR formatting (Indian digit grouping) + consistent rounding (2 decimals)
-- [ ] Empty/first-run states and guidance
-- [ ] Export to CSV/JSON (data safety)
-- [ ] Error handling + loading states
-- [ ] Basic tests for interest/schedule/allocation logic
+- [x] INR formatting (Indian digit grouping) + consistent rounding (2 decimals)
+- [x] Empty/first-run states and guidance
+- [x] Export to CSV/JSON (data safety) — CSV export for borrowers/loans/payments
+- [x] Error handling + loading states (toasts, loading text)
+- [x] Basic tests for interest/schedule/allocation logic
 
 ## Phase 9 — Windows desktop release
 - [ ] Windows build config + icon/branding
 - [ ] Build + smoke test Windows desktop installer
 - [ ] Tag v1 (Windows)
+
+## Phase 10 — UX features
+- [x] Light/dark theme: provider (light/dark/system), toggle in nav, persisted
+- [x] Share connection details as QR code (from Settings)
+- [x] Connect by scanning QR (camera, default option) with manual entry fallback
 
 ## Later platforms (after Windows feature-complete)
 - [ ] Android: SDK/NDK setup, embedded-replica spike on device, build APK
@@ -96,3 +101,16 @@ Track all work here. Complete tasks **one by one**; after each completed task, d
 - Add app shell: routing, responsive layout, nav, placeholder pages
 - Validate libsql spike on Windows (libsql 0.9, MSVC required)
 - Add data layer: DbState, schema migrations, connect commands
+- Add secure credential storage and Turso connect commands
+- Add borrower model, repository, and CRUD commands with tests
+- Add Borrowers UI: list, search, form dialog, IPC bindings, UI kit
+- Add loans backend: simple interest, schedule, balances, commands, tests
+- Add Loans UI: filters, search, list, create form, select component
+- Add payments backend: interest-first allocation, robust numeric reads
+- Add Payments UI: list, search, record form, delete
+- Add dashboard stats backend: summary metrics and dues this month
+- Add Dashboard UI: summary cards and dues-this-month list
+- Add reports backend: monthly and by-person aggregates with tests
+- Add Reports UI: monthly bar, recovered/outstanding donut, by-person table
+- Add Settings/onboarding: Turso connect flow, sync, guide
+- Add Windows dev scripts and per-OS variants (MSVC init)
