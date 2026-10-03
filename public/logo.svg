@@ -1,0 +1,49 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="TrustFund logo">
+  <defs>
+    <linearGradient id="tfShield" x1="256" y1="48" x2="256" y2="440" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22C55E"/>
+      <stop offset="1" stop-color="#0EA5A4"/>
+    </linearGradient>
+    <linearGradient id="tfCycle" x1="128" y1="150" x2="384" y2="360" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ECFEFF"/>
+      <stop offset="1" stop-color="#D1FAE5"/>
+    </linearGradient>
+    <filter id="tfShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#0EA5A4" flood-opacity="0.25"/>
+    </filter>
+    <!-- Sharp auto-orienting arrowhead -->
+    <marker id="tfArrow" viewBox="0 0 10 10" refX="2" refY="5"
+            markerWidth="2.4" markerHeight="2.4" orient="auto-start-reverse"
+            markerUnits="strokeWidth">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#E6FFFA"/>
+    </marker>
+  </defs>
+
+  <!-- Shield: trust & security -->
+  <path filter="url(#tfShadow)"
+        d="M256 48 L432 108 V248 C432 356 352 424 256 456 C160 424 80 356 80 248 V108 Z"
+        fill="url(#tfShield)"/>
+
+  <!-- Inner shield rim -->
+  <path d="M256 84 L400 133 V248 C400 338 336 397 256 424 C176 397 112 338 112 248 V133 Z"
+        fill="none" stroke="#ffffff" stroke-opacity="0.35" stroke-width="6"/>
+
+  <!-- Lend & recover cycle: two curved arrows forming a loop -->
+  <g stroke="url(#tfCycle)" stroke-width="20" stroke-linecap="round" fill="none">
+    <path d="M180 214 A82 82 0 0 1 318 198" marker-end="url(#tfArrow)"/>
+    <path d="M332 298 A82 82 0 0 1 194 314" marker-end="url(#tfArrow)"/>
+  </g>
+
+  <!-- Currency mark (rupee ₹) at the center — official Indian Rupee style, scaled to fit inside the loop -->
+  <g fill="none" stroke="#ffffff" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"
+     transform="translate(262 268) scale(0.8) translate(-262 -268)">
+    <!-- Top horizontal bar -->
+    <line x1="224" y1="214" x2="300" y2="214"/>
+    <!-- Second horizontal bar -->
+    <line x1="224" y1="240" x2="300" y2="240"/>
+    <!-- Bowl: descends from top bar, curves right and back (the 'र' head) -->
+    <path d="M248 214 c30 2 44 14 44 32 0 20 -18 32 -50 32 h-18"/>
+    <!-- Diagonal leg from the bowl down to the lower-right -->
+    <path d="M240 278 L296 322"/>
+  </g>
+</svg>
