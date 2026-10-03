@@ -1,26 +1,57 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
 import { createHashRouter, RouterProvider } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { AppLayout } from '@/components/layout/AppLayout'
-import { DashboardPage } from '@/pages/DashboardPage'
-import { BorrowersPage } from '@/pages/BorrowersPage'
-import { LoansPage } from '@/pages/LoansPage'
-import { PaymentsPage } from '@/pages/PaymentsPage'
-import { ReportsPage } from '@/pages/ReportsPage'
-import { SettingsPage } from '@/pages/SettingsPage'
 import { db } from '@/lib/api'
+
+const DashboardPage = lazy(() =>
+  import('@/pages/DashboardPage').then((m) => ({ default: m.DashboardPage })),
+)
+const BorrowersPage = lazy(() =>
+  import('@/pages/BorrowersPage').then((m) => ({ default: m.BorrowersPage })),
+)
+const BorrowerDetailPage = lazy(() =>
+  import('@/pages/BorrowerDetailPage').then((m) => ({
+    default: m.BorrowerDetailPage,
+  })),
+)
+const LoansPage = lazy(() =>
+  import('@/pages/LoansPage').then((m) => ({ default: m.LoansPage })),
+)
+const LoanDetailPage = lazy(() =>
+  import('@/pages/LoanDetailPage').then((m) => ({
+    default: m.LoanDetailPage,
+  })),
+)
+const PaymentsPage = lazy(() =>
+  import('@/pages/PaymentsPage').then((m) => ({ default: m.PaymentsPage })),
+)
+const ReportsPage = lazy(() =>
+  import('@/pages/ReportsPage').then((m) => ({ default: m.ReportsPage })),
+)
+const SettingsPage = lazy(() =>
+  import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
+)
+
+const pageFallback = <p className="text-muted-foreground">Loading…</p>
+
+function withSuspense(node: ReactNode) {
+  return <Suspense fallback={pageFallback}>{node}</Suspense>
+}
 
 const router = createHashRouter([
   {
     path: '/',
     element: <AppLayout />,
     children: [
-      { index: true, element: <DashboardPage /> },
-      { path: 'borrowers', element: <BorrowersPage /> },
-      { path: 'loans', element: <LoansPage /> },
-      { path: 'payments', element: <PaymentsPage /> },
-      { path: 'reports', element: <ReportsPage /> },
-      { path: 'settings', element: <SettingsPage /> },
+      { index: true, element: withSuspense(<DashboardPage />) },
+      { path: 'borrowers', element: withSuspense(<BorrowersPage />) },
+      { path: 'borrowers/:id', element: withSuspense(<BorrowerDetailPage />) },
+      { path: 'loans', element: withSuspense(<LoansPage />) },
+      { path: 'loans/:id', element: withSuspense(<LoanDetailPage />) },
+      { path: 'payments', element: withSuspense(<PaymentsPage />) },
+      { path: 'reports', element: withSuspense(<ReportsPage />) },
+      { path: 'settings', element: withSuspense(<SettingsPage />) },
     ],
   },
 ])

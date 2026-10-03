@@ -2,41 +2,24 @@ import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { db } from '@/lib/api'
+import { exporter } from '@/lib/api'
+import { downloadText } from '@/lib/download'
+import { ConnectDialog } from '@/features/connection/ConnectDialog'
+import { ShareConnectionDialog } from '@/features/connection/ShareConnectionDialog'
 
 export function SettingsPage() {
   const [hasCreds, setHasCreds] = useState(false)
-  const [syncUrl, setSyncUrl] = useState('')
-  const [authToken, setAuthToken] = useState('')
-  const [connecting, setConnecting] = useState(false)
   const [syncing, setSyncing] = useState(false)
+  const [connectOpen, setConnectOpen] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
 
   useEffect(() => {
     db.hasCredentials()
       .then(setHasCreds)
       .catch((e) => toast.error(String(e)))
   }, [])
-
-  const handleConnect = async () => {
-    if (!syncUrl.trim() || !authToken.trim()) {
-      toast.error('Enter both the database URL and auth token')
-      return
-    }
-    setConnecting(true)
-    try {
-      await db.connectTurso(syncUrl.trim(), authToken.trim())
-      toast.success('Connected and synced. Restart not required.')
-      setHasCreds(true)
-      setAuthToken('')
-    } catch (e) {
-      toast.error(`Connection failed: ${e}`)
-    } finally {
-      setConnecting(false)
-    }
-  }
 
   const handleSync = async () => {
     setSyncing(true)
@@ -66,6 +49,17 @@ export function SettingsPage() {
     }
   }
 
+  const handleExport = async (table: 'borrowers' | 'loans' | 'payments') => {
+    try {
+      const csv = await exporter.csv(table)
+      const date = new Date().toISOString().slice(0, 10)
+      downloadText(`trustfund-${table}-${date}.csv`, csv)
+      toast.success(`Exported ${table}`)
+    } catch (e) {
+      toast.error(String(e))
+    }
+  }
+
   return (
     <div className="max-w-2xl">
       <PageHeader
@@ -84,11 +78,15 @@ export function SettingsPage() {
             <>
               <p className="text-sm text-muted-foreground">
                 This device is configured to sync with your Turso cloud
-                database. Use the same credentials on another device to sync.
+                database. Share the connection to set up another device
+                instantly.
               </p>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button onClick={handleSync} disabled={syncing}>
                   {syncing ? 'Syncing…' : 'Sync now'}
+                </Button>
+                <Button variant="outline" onClick={() => setShareOpen(true)}>
+                  Share connection (QR)
                 </Button>
                 <Button variant="outline" onClick={handleDisconnect}>
                   Disconnect
@@ -97,28 +95,15 @@ export function SettingsPage() {
             </>
           ) : (
             <>
-              <div className="grid gap-2">
-                <Label htmlFor="url">Database URL</Label>
-                <Input
-                  id="url"
-                  placeholder="libsql://your-db.turso.io"
-                  value={syncUrl}
-                  onChange={(e) => setSyncUrl(e.target.value)}
-                />
+              <p className="text-sm text-muted-foreground">
+                Connect to your Turso database by scanning a QR from another
+                device, or enter the details manually.
+              </p>
+              <div>
+                <Button onClick={() => setConnectOpen(true)}>
+                  Connect a database
+                </Button>
               </div>
-              <div className="grid gap-2">
-                <Label htmlFor="token">Auth token</Label>
-                <Input
-                  id="token"
-                  type="password"
-                  placeholder="Paste your Turso auth token"
-                  value={authToken}
-                  onChange={(e) => setAuthToken(e.target.value)}
-                />
-              </div>
-              <Button onClick={handleConnect} disabled={connecting}>
-                {connecting ? 'Connecting…' : 'Connect & sync'}
-              </Button>
               <p className="text-xs text-muted-foreground">
                 Until you connect, TrustFund stores data locally on this device
                 only.
@@ -145,11 +130,65 @@ export function SettingsPage() {
               (starts with <code>libsql://</code>).
             </li>
             <li>Create an auth token for the database and copy it.</li>
-            <li>Paste both above and select Connect &amp; sync.</li>
+            <li>
+              Select{' '}
+              <span className="font-medium text-foreground">
+                Connect a database
+              </span>{' '}
+              above, then scan a QR or enter the details.
+            </li>
           </ol>
           <p className="mt-3 text-xs text-muted-foreground">
             Your token is stored on this device only and grants access to your
             own database.
+          </p>
+        </CardContent>
+      </Card>
+
+      <ConnectDialog
+        open={connectOpen}
+        onOpenChange={setConnectOpen}
+        onConnected={() => setHasCreds(true)}
+      />
+      <ShareConnectionDialog open={shareOpen} onOpenChange={setShareOpen} />
+
+      <Card className="mt-4">
+        <CardHeader>
+          <CardTitle>Export data</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => handleExport('borrowers')}>
+            Borrowers CSV
+          </Button>
+          <Button variant="outline" onClick={() => handleExport('loans')}>
+            Loans CSV
+          </Button>
+          <Button variant="outline" onClick={() => handleExport('payments')}>
+            Payments CSV
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="mt-4">
+        <CardHeader>
+          <CardTitle>Developer</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Button
+            variant="outline"
+            onClick={async () => {
+              try {
+                await db.seed()
+                toast.success('Sample data loaded')
+              } catch (e) {
+                toast.error(String(e))
+              }
+            }}
+          >
+            Load sample data
+          </Button>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Adds sample borrowers, loans, and a payment for testing.
           </p>
         </CardContent>
       </Card>

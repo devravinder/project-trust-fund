@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { cn } from '@/lib/utils'
+import { ThemeToggle } from '@/components/theme/ThemeToggle'
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -56,10 +57,22 @@ export function AppLayout() {
         <nav className="flex flex-col gap-1">
           <NavItems orientation="side" />
         </nav>
+        <div className="mt-auto pt-4">
+          <ThemeToggle />
+        </div>
       </aside>
 
       {/* Main content */}
       <div className="flex flex-1 flex-col">
+        {/* Top bar (mobile) with logo + theme toggle */}
+        <header className="flex items-center justify-between border-b p-3 md:hidden">
+          <div className="flex items-center gap-2">
+            <img src="/logo.svg" alt="TrustFund" className="size-6" />
+            <span className="font-bold">TrustFund</span>
+          </div>
+          <ThemeToggle />
+        </header>
+
         <main className="flex-1 p-4 pb-20 md:pb-4">
           <Outlet />
         </main>

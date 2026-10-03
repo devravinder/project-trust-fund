@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Plus, Search } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -31,6 +32,7 @@ export function LoansPage() {
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const navigate = useNavigate()
 
   const load = useCallback(async (status: LoanStatus | 'all', term: string) => {
     setLoading(true)
@@ -90,7 +92,11 @@ export function LoansPage() {
       ) : (
         <div className="grid gap-2">
           {items.map((l) => (
-            <Card key={l.id}>
+            <Card
+              key={l.id}
+              className="cursor-pointer transition-colors hover:bg-accent"
+              onClick={() => navigate(`/loans/${l.id}`)}
+            >
               <CardContent className="p-4">
                 <div className="flex items-start justify-between">
                   <div>

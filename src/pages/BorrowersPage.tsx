@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Plus, Pencil, Trash2, Search } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -15,6 +16,7 @@ export function BorrowersPage() {
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Borrower | null>(null)
+  const navigate = useNavigate()
 
   const load = useCallback(async (term: string) => {
     setLoading(true)
@@ -86,12 +88,16 @@ export function BorrowersPage() {
           {items.map((b) => (
             <Card key={b.id}>
               <CardContent className="flex items-center justify-between p-4">
-                <div>
+                <button
+                  type="button"
+                  className="flex-1 text-left"
+                  onClick={() => navigate(`/borrowers/${b.id}`)}
+                >
                   <p className="font-medium">{b.name}</p>
                   {b.phone && (
                     <p className="text-sm text-muted-foreground">{b.phone}</p>
                   )}
-                </div>
+                </button>
                 <div className="flex gap-1">
                   <Button
                     variant="ghost"

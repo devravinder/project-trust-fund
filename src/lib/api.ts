@@ -64,9 +64,14 @@ export const db = {
     invoke<void>('db_connect_turso', { syncUrl, authToken }),
   connectSaved: () => invoke<boolean>('db_connect_saved'),
   hasCredentials: () => invoke<boolean>('db_has_credentials'),
+  getCredentials: () =>
+    invoke<{ sync_url: string; auth_token: string } | null>(
+      'db_get_credentials',
+    ),
   clearCredentials: () => invoke<void>('db_clear_credentials'),
   isConnected: () => invoke<boolean>('db_is_connected'),
   sync: () => invoke<void>('db_sync'),
+  seed: () => invoke<void>('dev_seed'),
 }
 
 // ---- Borrowers ----
@@ -89,6 +94,7 @@ export const loans = {
   list: (status?: LoanStatus | 'all', search?: string) =>
     invoke<LoanSummary[]>('loans_list', { status, search }),
   get: (id: string) => invoke<Loan | null>('loan_get', { id }),
+  summary: (id: string) => invoke<LoanSummary | null>('loan_summary', { id }),
   create: (input: LoanInput) => invoke<Loan>('loan_create', { input }),
   setStatus: (id: string, status: LoanStatus) =>
     invoke<void>('loan_set_status', { id, status }),
@@ -118,4 +124,11 @@ export const dashboard = {
 export const reports = {
   monthly: () => invoke<MonthlyPoint[]>('report_monthly'),
   byPerson: () => invoke<PersonReport[]>('report_by_person'),
+}
+
+// ---- Export ----
+
+export const exporter = {
+  csv: (table: 'borrowers' | 'loans' | 'payments') =>
+    invoke<string>('export_csv', { table }),
 }
