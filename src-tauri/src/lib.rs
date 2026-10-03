@@ -1,5 +1,6 @@
 mod credentials;
 mod db;
+mod export;
 mod interest;
 mod migrations;
 mod models;
@@ -81,6 +82,12 @@ fn db_has_credentials(app: tauri::AppHandle) -> Result<bool, String> {
     Ok(credentials::load(&app)?.is_some())
 }
 
+/// Return stored credentials (for sharing as a QR code). Returns null if none.
+#[tauri::command]
+fn db_get_credentials(app: tauri::AppHandle) -> Result<Option<TursoCredentials>, String> {
+    credentials::load(&app)
+}
+
 /// Forget credentials (disconnect on next launch).
 #[tauri::command]
 fn db_clear_credentials(app: tauri::AppHandle) -> Result<(), String> {
@@ -91,6 +98,88 @@ fn db_clear_credentials(app: tauri::AppHandle) -> Result<(), String> {
 #[tauri::command]
 async fn db_is_connected(state: tauri::State<'_, DbState>) -> Result<bool, String> {
     Ok(state.is_connected().await)
+}
+
+/// Dev helper: seed sample data (borrowers, loans, a payment). Safe to call
+/// multiple times — it just adds more sample rows.
+#[tauri::command]
+async fn dev_seed(state: tauri::State<'_, DbState>) -> Result<(), String> {
+    let conn = state.conn().await.map_err(|e| e.to_string())?;
+
+    let ramesh = repo_borrowers::create(
+        &conn,
+        BorrowerInput {
+            name: "Ramesh Kumar".into(),
+            phone: Some("9876543210".into()),
+            address: Some("Bengaluru".into()),
+            photo_path: None,
+            notes: None,
+        },
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let asha = repo_borrowers::create(
+        &conn,
+        BorrowerInput {
+            name: "Asha Verma".into(),
+            phone: Some("9123456780".into()),
+            address: None,
+            photo_path: None,
+            notes: None,
+        },
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let loan1 = repo_loans::create(
+        &conn,
+        LoanInput {
+            borrower_id: ramesh.id,
+            principal: 10_000.0,
+            monthly_rate: 0.02,
+            interest_type: "simple".into(),
+            repayment_mode: "installments".into(),
+            term_months: Some(5),
+            start_date: "2026-01-15".into(),
+            note: Some("Sample installment loan".into()),
+        },
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+
+    repo_loans::create(
+        &conn,
+        LoanInput {
+            borrower_id: asha.id,
+            principal: 5_000.0,
+            monthly_rate: 0.0,
+            interest_type: "simple".into(),
+            repayment_mode: "one_time".into(),
+            term_months: Some(6),
+            start_date: "2026-02-01".into(),
+            note: Some("Zero-interest, friend".into()),
+        },
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+
+    repo_payments::create(
+        &conn,
+        PaymentInput {
+            loan_id: loan1.id.clone(),
+            amount: 2_200.0,
+            interest_component: None,
+            principal_component: None,
+            paid_date: "2026-02-15".into(),
+            note: None,
+        },
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    let _ = repo_loans::refresh_schedule_status(&conn, &loan1.id).await;
+
+    Ok(())
 }
 
 /// Trigger a manual sync with the remote (no-op for local-only).
@@ -192,6 +281,17 @@ async fn loan_get(state: tauri::State<'_, DbState>, id: String) -> Result<Option
 }
 
 #[tauri::command]
+async fn loan_summary(
+    state: tauri::State<'_, DbState>,
+    id: String,
+) -> Result<Option<LoanSummary>, String> {
+    let conn = state.conn().await.map_err(|e| e.to_string())?;
+    repo_loans::get_summary(&conn, &id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn loan_create(
     state: tauri::State<'_, DbState>,
     input: LoanInput,
@@ -272,6 +372,7 @@ async fn payment_create(
     let result = repo_payments::create(&conn, input)
         .await
         .map_err(|e| e.to_string())?;
+    let _ = repo_loans::refresh_schedule_status(&conn, &result.loan_id).await;
     let _ = state.sync().await;
     Ok(result)
 }
@@ -279,9 +380,16 @@ async fn payment_create(
 #[tauri::command]
 async fn payment_delete(state: tauri::State<'_, DbState>, id: String) -> Result<(), String> {
     let conn = state.conn().await.map_err(|e| e.to_string())?;
+    // Capture loan_id before delete so we can refresh its schedule.
+    let loan_id = repo_payments::loan_id_of(&conn, &id)
+        .await
+        .map_err(|e| e.to_string())?;
     repo_payments::soft_delete(&conn, &id)
         .await
         .map_err(|e| e.to_string())?;
+    if let Some(lid) = loan_id {
+        let _ = repo_loans::refresh_schedule_status(&conn, &lid).await;
+    }
     let _ = state.sync().await;
     Ok(())
 }
@@ -327,6 +435,23 @@ async fn report_by_person(
         .map_err(|e| e.to_string())
 }
 
+// ---- Export (CSV) ----
+
+#[tauri::command]
+async fn export_csv(
+    state: tauri::State<'_, DbState>,
+    table: String,
+) -> Result<String, String> {
+    let conn = state.conn().await.map_err(|e| e.to_string())?;
+    let result = match table.as_str() {
+        "borrowers" => export::borrowers_csv(&conn).await,
+        "loans" => export::loans_csv(&conn).await,
+        "payments" => export::payments_csv(&conn).await,
+        other => return Err(format!("unknown table: {other}")),
+    };
+    result.map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -347,9 +472,11 @@ pub fn run() {
             db_connect_turso,
             db_connect_saved,
             db_has_credentials,
+            db_get_credentials,
             db_clear_credentials,
             db_is_connected,
             db_sync,
+            dev_seed,
             borrowers_list,
             borrower_get,
             borrower_create,
@@ -358,6 +485,7 @@ pub fn run() {
             borrower_total_outstanding,
             loans_list,
             loan_get,
+            loan_summary,
             loan_create,
             loan_set_status,
             loan_delete,
@@ -370,6 +498,7 @@ pub fn run() {
             dashboard_dues,
             report_monthly,
             report_by_person,
+            export_csv,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

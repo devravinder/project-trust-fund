@@ -98,6 +98,15 @@ pub async fn get(conn: &Connection, id: &str) -> Result<Option<Loan>, DbError> {
     }
 }
 
+/// Single loan with computed balances + borrower name.
+pub async fn get_summary(
+    conn: &Connection,
+    id: &str,
+) -> Result<Option<LoanSummary>, DbError> {
+    let all = list(conn, Some("all".into()), None).await?;
+    Ok(all.into_iter().find(|s| s.loan.id == id))
+}
+
 /// Add `months` to a date, clamping the day to the month's length.
 fn add_months(date: NaiveDate, months: i64) -> NaiveDate {
     let mut y = date.year();
@@ -198,6 +207,51 @@ pub async fn soft_delete(conn: &Connection, id: &str) -> Result<(), DbError> {
     .await?;
     Ok(())
 }
+/// Recompute installment schedule row statuses against actual payments.
+/// Applies total amount paid cumulatively across rows (by seq), marking each
+/// paid / partial / pending, and overdue when past due date and unpaid.
+pub async fn refresh_schedule_status(conn: &Connection, loan_id: &str) -> Result<(), DbError> {
+    let mut prow = conn
+        .query(
+            "SELECT COALESCE(SUM(amount), 0) FROM payments \
+             WHERE loan_id = ?1 AND deleted_at IS NULL",
+            params![loan_id],
+        )
+        .await?;
+    let mut remaining = match prow.next().await? {
+        Some(r) => crate::util::get_f64(&r, 0)?,
+        None => 0.0,
+    };
+
+    let today = chrono::Local::now().date_naive();
+    let items = schedule(conn, loan_id).await?;
+    for it in items {
+        let total = it.total_due;
+        let status = if remaining >= total - 0.005 {
+            remaining = round2(remaining - total);
+            "paid"
+        } else if remaining > 0.005 {
+            remaining = 0.0;
+            "partial"
+        } else {
+            let due = NaiveDate::parse_from_str(&it.due_date, "%Y-%m-%d").unwrap_or(today);
+            if due < today {
+                "overdue"
+            } else {
+                "pending"
+            }
+        };
+        let now = now_iso();
+        conn.execute(
+            "UPDATE installment_schedule SET status = ?2, updated_at = ?3 WHERE id = ?1",
+            params![it.id, status, now],
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+
 
 pub async fn schedule(conn: &Connection, loan_id: &str) -> Result<Vec<ScheduleItem>, DbError> {
     let mut rows = conn
@@ -281,5 +335,51 @@ mod tests {
         assert_eq!(sched[0].due_date, "2026-02-15");
         let total_principal: f64 = sched.iter().map(|s| s.principal_due).sum();
         assert_eq!(round2(total_principal), 10_000.0);
+    }
+
+    #[tokio::test]
+    async fn refresh_marks_first_installment_paid() {
+        let conn = test_conn().await;
+        let b = repo_borrowers::create(
+            &conn,
+            BorrowerInput {
+                name: "Test".into(),
+                phone: None,
+                address: None,
+                photo_path: None,
+                notes: None,
+            },
+        )
+        .await
+        .unwrap();
+        let loan = create(
+            &conn,
+            LoanInput {
+                borrower_id: b.id,
+                principal: 10_000.0,
+                monthly_rate: 0.02,
+                interest_type: "simple".into(),
+                repayment_mode: "installments".into(),
+                term_months: Some(5),
+                start_date: "2026-01-15".into(),
+                note: None,
+            },
+        )
+        .await
+        .unwrap();
+        // First installment total = 2200. Pay exactly that.
+        conn.execute(
+            "INSERT INTO payments (id, loan_id, amount, interest_component, principal_component, \
+               paid_date, created_at, updated_at) \
+             VALUES ('p1', ?1, 2200, 200, 2000, '2026-02-15', '2026-02-15', '2026-02-15')",
+            libsql::params![loan.id.clone()],
+        )
+        .await
+        .unwrap();
+
+        refresh_schedule_status(&conn, &loan.id).await.unwrap();
+        let sched = schedule(&conn, &loan.id).await.unwrap();
+        assert_eq!(sched[0].status, "paid");
+        assert_ne!(sched[1].status, "paid");
     }
 }

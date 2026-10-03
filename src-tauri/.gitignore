@@ -2,3 +2,14 @@
 # will have compiled files and executables
 /target/
 /gen/schemas
+
+# Android build artifacts (keep the gen/android project, ignore build output)
+/gen/android/app/build/
+/gen/android/build/
+/gen/android/.gradle/
+/gen/android/local.properties
+/gen/android/app/.cxx/
+
+# iOS build artifacts (future)
+/gen/apple/build/
+/gen/apple/Externals/

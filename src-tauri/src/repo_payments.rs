@@ -186,6 +186,21 @@ pub async fn create(conn: &Connection, input: PaymentInput) -> Result<Payment, D
     get(conn, &id).await?.ok_or(DbError::Msg("insert failed".into()))
 }
 
+/// Look up the loan_id for a payment (used before delete to refresh schedule).
+pub async fn loan_id_of(conn: &Connection, id: &str) -> Result<Option<String>, DbError> {
+    let mut rows = conn
+        .query(
+            "SELECT loan_id FROM payments WHERE id = ?1 AND deleted_at IS NULL",
+            params![id],
+        )
+        .await?;
+    match rows.next().await? {
+        Some(row) => Ok(Some(row.get(0)?)),
+        None => Ok(None),
+    }
+}
+
+
 pub async fn soft_delete(conn: &Connection, id: &str) -> Result<(), DbError> {
     let now = now_iso();
     conn.execute(

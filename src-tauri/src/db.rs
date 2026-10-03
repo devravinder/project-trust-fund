@@ -60,16 +60,6 @@ impl DbState {
         Ok(())
     }
 
-    /// Run the closure with the active connection, erroring if not connected.
-    pub async fn with_conn<F, T>(&self, f: F) -> Result<T, DbError>
-    where
-        F: FnOnce(&Connection) -> T,
-    {
-        let guard = self.inner.lock().await;
-        let handle = guard.as_ref().ok_or(DbError::NotConnected)?;
-        Ok(f(&handle.conn))
-    }
-
     /// Get a clone of the active connection handle.
     pub async fn conn(&self) -> Result<Connection, DbError> {
         let guard = self.inner.lock().await;
