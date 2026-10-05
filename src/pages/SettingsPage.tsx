@@ -21,12 +21,22 @@ export function SettingsPage() {
   const [migrateOpen, setMigrateOpen] = useState(false)
   const [disconnectOpen, setDisconnectOpen] = useState(false)
   const [clearAllOpen, setClearAllOpen] = useState(false)
+  const [seedOpen, setSeedOpen] = useState(false)
 
   useEffect(() => {
     db.hasCredentials()
       .then(setHasCreds)
       .catch((e) => toast.error(String(e)))
   }, [])
+
+  const confirmSeed = async () => {
+    try {
+      await db.seed()
+      toast.success('Sample data loaded')
+    } catch (e) {
+      toast.error(String(e))
+    }
+  }
 
   const confirmClearAll = async () => {
     try {
@@ -220,17 +230,7 @@ export function SettingsPage() {
           <CardTitle>Developer</CardTitle>
         </CardHeader>
         <CardContent>
-          <Button
-            variant="outline"
-            onClick={async () => {
-              try {
-                await db.seed()
-                toast.success('Sample data loaded')
-              } catch (e) {
-                toast.error(String(e))
-              }
-            }}
-          >
+          <Button variant="outline" onClick={() => setSeedOpen(true)}>
             Load sample data
           </Button>
           <p className="mt-2 text-xs text-muted-foreground">
@@ -260,6 +260,15 @@ export function SettingsPage() {
         confirmText="Clear everything"
         destructive
         onConfirm={confirmClearAll}
+      />
+
+      <ConfirmDialog
+        open={seedOpen}
+        onOpenChange={setSeedOpen}
+        title="Load sample data?"
+        description="This adds sample borrowers, loans, and payments to the current store (in addition to any existing data)."
+        confirmText="Load sample data"
+        onConfirm={confirmSeed}
       />
     </div>
   )
