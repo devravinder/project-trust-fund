@@ -43,6 +43,14 @@ pub fn effective_months(elapsed: i64, term_months: Option<i64>) -> i64 {
     }
 }
 
+/// Whole months between two ISO dates (`YYYY-MM-DD`); None if either is unparseable.
+/// Used to derive a loan's term from its start and end dates.
+pub fn months_between_dates(start: &str, end: &str) -> Option<i64> {
+    let s = NaiveDate::parse_from_str(start, "%Y-%m-%d").ok()?;
+    let e = NaiveDate::parse_from_str(end, "%Y-%m-%d").ok()?;
+    Some(whole_months_between(s, e))
+}
+
 /// Simple interest accrued on the original principal over `months`.
 /// interest = principal * monthly_rate * months
 pub fn simple_interest(principal: f64, monthly_rate: f64, months: i64) -> f64 {

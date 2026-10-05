@@ -32,7 +32,7 @@ pub struct Loan {
     pub monthly_rate: f64,
     pub interest_type: String,   // 'simple' | 'compound'
     pub repayment_mode: String,  // 'one_time' | 'installments'
-    pub term_months: Option<i64>,
+    pub end_date: Option<String>, // loan end/due date (YYYY-MM-DD); drives term, freeze, overdue
     pub start_date: String,
     pub status: String,          // active | overdue | closed | written_off
     pub note: Option<String>,
@@ -47,7 +47,7 @@ pub struct LoanInput {
     pub monthly_rate: f64,
     pub interest_type: String,
     pub repayment_mode: String,
-    pub term_months: Option<i64>,
+    pub end_date: Option<String>,
     pub start_date: String,
     pub note: Option<String>,
 }

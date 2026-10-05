@@ -36,7 +36,7 @@ pub fn borrowers_csv(d: &Dataset) -> String {
 
 pub fn loans_csv(d: &Dataset) -> String {
     let mut out = String::from(
-        "id,borrower,principal,monthly_rate,interest_type,repayment_mode,term_months,start_date,status,created_at\n",
+        "id,borrower,principal,monthly_rate,interest_type,repayment_mode,end_date,start_date,status,created_at\n",
     );
     for l in d.loans.iter().filter(|l| !d.deleted_loans.contains(&l.id)) {
         let borrower = d
@@ -53,7 +53,7 @@ pub fn loans_csv(d: &Dataset) -> String {
             l.monthly_rate,
             esc(&l.interest_type),
             esc(&l.repayment_mode),
-            l.term_months.map(|t| t.to_string()).unwrap_or_default(),
+            esc(l.end_date.as_deref().unwrap_or("")),
             esc(&l.start_date),
             esc(&l.status),
             esc(&l.created_at),

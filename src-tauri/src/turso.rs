@@ -80,7 +80,7 @@ impl TursoClient {
     pub async fn ensure_schema(&self) -> Result<(), String> {
         let ddl = [
             "CREATE TABLE IF NOT EXISTS borrowers (id TEXT PRIMARY KEY, name TEXT NOT NULL, phone TEXT, address TEXT, photo_path TEXT, notes TEXT, created_at TEXT, updated_at TEXT, deleted INTEGER DEFAULT 0)",
-            "CREATE TABLE IF NOT EXISTS loans (id TEXT PRIMARY KEY, borrower_id TEXT, principal REAL, monthly_rate REAL, interest_type TEXT, repayment_mode TEXT, term_months INTEGER, start_date TEXT, status TEXT, note TEXT, created_at TEXT, updated_at TEXT, deleted INTEGER DEFAULT 0)",
+            "CREATE TABLE IF NOT EXISTS loans (id TEXT PRIMARY KEY, borrower_id TEXT, principal REAL, monthly_rate REAL, interest_type TEXT, repayment_mode TEXT, end_date TEXT, start_date TEXT, status TEXT, note TEXT, created_at TEXT, updated_at TEXT, deleted INTEGER DEFAULT 0)",
             "CREATE TABLE IF NOT EXISTS payments (id TEXT PRIMARY KEY, loan_id TEXT, amount REAL, interest_component REAL, principal_component REAL, paid_date TEXT, note TEXT, created_at TEXT, updated_at TEXT, deleted INTEGER DEFAULT 0)",
             "CREATE TABLE IF NOT EXISTS schedule (id TEXT PRIMARY KEY, loan_id TEXT, seq INTEGER, due_date TEXT, principal_due REAL, interest_due REAL, total_due REAL, status TEXT)",
         ];
@@ -109,12 +109,6 @@ pub fn arg_real(n: f64) -> Value {
 }
 pub fn arg_int(n: i64) -> Value {
     json!({ "type": "integer", "value": n.to_string() })
-}
-pub fn arg_opt_int(n: Option<i64>) -> Value {
-    match n {
-        Some(v) => json!({ "type": "integer", "value": v.to_string() }),
-        None => json!({ "type": "null" }),
-    }
 }
 
 /// Decode the Hrana rows for the first statement result into owned JSON values.

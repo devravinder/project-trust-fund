@@ -17,7 +17,7 @@ use models::{Borrower, BorrowerInput, Loan, LoanInput, Payment, PaymentInput, Sc
 use repo_loans::LoanSummary;
 use repo_payments::PaymentView;
 use repo_reports::{MonthlyPoint, PersonReport};
-use repo_stats::{DashboardSummary, DueItem};
+use repo_stats::{DashboardSummary, DueItem, OverdueLoan};
 use store::StoreState;
 use tauri::Manager;
 
@@ -193,7 +193,7 @@ async fn dev_seed(state: tauri::State<'_, StoreState>) -> Result<(), String> {
                 monthly_rate: 0.02,
                 interest_type: "simple".into(),
                 repayment_mode: "installments".into(),
-                term_months: Some(5),
+                end_date: Some("2026-06-15".into()),
                 start_date: "2026-01-15".into(),
                 note: Some("Sample installment loan".into()),
             },
@@ -218,7 +218,7 @@ async fn dev_seed(state: tauri::State<'_, StoreState>) -> Result<(), String> {
                 monthly_rate: 0.0,
                 interest_type: "simple".into(),
                 repayment_mode: "one_time".into(),
-                term_months: Some(6),
+                end_date: Some("2026-08-01".into()),
                 start_date: "2026-02-01".into(),
                 note: Some("Zero-interest, friend".into()),
             },
@@ -439,6 +439,17 @@ async fn dashboard_dues(
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+async fn dashboard_overdue(
+    state: tauri::State<'_, StoreState>,
+    limit: Option<i64>,
+) -> Result<Vec<OverdueLoan>, String> {
+    let lim = limit.unwrap_or(10) as usize;
+    data::read(&state, move |d| repo_stats::overdue_loans(d, lim))
+        .await
+        .map_err(|e| e.to_string())
+}
+
 // ---- Reports ----
 
 #[tauri::command]
@@ -523,6 +534,7 @@ pub fn run() {
             payment_delete,
             dashboard_summary,
             dashboard_dues,
+            dashboard_overdue,
             report_monthly,
             report_by_person,
             export_csv,

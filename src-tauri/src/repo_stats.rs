@@ -28,6 +28,17 @@ pub struct DueItem {
     pub status: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct OverdueLoan {
+    pub loan_id: String,
+    pub borrower_name: String,
+    pub end_date: String,
+    pub outstanding: f64,
+    pub interest_due: f64,
+    pub total_due: f64,
+    pub days_overdue: i64,
+}
+
 fn not_deleted_loan(d: &Dataset, id: &str) -> bool {
     !d.deleted_loans.contains(&id.to_string())
 }
@@ -89,12 +100,14 @@ pub fn summary(d: &Dataset) -> DashboardSummary {
             .sum();
         let outstanding = (l.principal - principal_paid).max(0.0);
 
-        if let Some(term) = l.term_months {
-            if let Ok(start) = NaiveDate::parse_from_str(&l.start_date, "%Y-%m-%d") {
-                let elapsed = crate::interest::whole_months_between(start, today);
-                if elapsed >= term && outstanding > 0.0 {
-                    overdue_loans += 1;
-                    overdue_amount += outstanding + interest_due;
+        // Overdue: past the loan's end date with an outstanding balance.
+        if outstanding > 0.0 {
+            if let Some(end) = l.end_date.as_deref() {
+                if let Ok(end_d) = NaiveDate::parse_from_str(end, "%Y-%m-%d") {
+                    if end_d < today {
+                        overdue_loans += 1;
+                        overdue_amount += outstanding + interest_due;
+                    }
                 }
             }
         }
@@ -156,6 +169,61 @@ pub fn dues_this_month(d: &Dataset, limit: usize) -> Vec<DueItem> {
     items
 }
 
+/// Loans past their end date with an outstanding balance, most overdue first.
+pub fn overdue_loans(d: &Dataset, limit: usize) -> Vec<OverdueLoan> {
+    let today = Local::now().date_naive();
+    let mut out: Vec<OverdueLoan> = d
+        .loans
+        .iter()
+        .filter(|l| {
+            not_deleted_loan(d, &l.id) && (l.status == "active" || l.status == "overdue")
+        })
+        .filter_map(|l| {
+            let end = l.end_date.as_deref()?;
+            let end_d = NaiveDate::parse_from_str(end, "%Y-%m-%d").ok()?;
+            if end_d >= today {
+                return None;
+            }
+            let principal_paid: f64 = d
+                .payments
+                .iter()
+                .filter(|p| p.loan_id == l.id && not_deleted_payment(d, &p.id))
+                .map(|p| p.principal_component)
+                .sum();
+            let outstanding = round2((l.principal - principal_paid).max(0.0));
+            if outstanding <= 0.0 {
+                return None;
+            }
+            let accrued = interest_accrued(l, today);
+            let collected: f64 = d
+                .payments
+                .iter()
+                .filter(|p| p.loan_id == l.id && not_deleted_payment(d, &p.id))
+                .map(|p| p.interest_component)
+                .sum();
+            let interest_due = round2((accrued - collected).max(0.0));
+            let borrower_name = d
+                .borrowers
+                .iter()
+                .find(|b| b.id == l.borrower_id)
+                .map(|b| b.name.clone())
+                .unwrap_or_default();
+            Some(OverdueLoan {
+                loan_id: l.id.clone(),
+                borrower_name,
+                end_date: end.to_string(),
+                outstanding,
+                interest_due,
+                total_due: round2(outstanding + interest_due),
+                days_overdue: (today - end_d).num_days(),
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| b.days_overdue.cmp(&a.days_overdue));
+    out.truncate(limit);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -183,7 +251,7 @@ mod tests {
                 monthly_rate: 0.02,
                 interest_type: "simple".into(),
                 repayment_mode: "one_time".into(),
-                term_months: Some(12),
+                end_date: Some("2021-01-01".into()),
                 start_date: "2020-01-01".into(),
                 note: None,
             },

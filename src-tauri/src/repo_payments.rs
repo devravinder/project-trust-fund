@@ -154,7 +154,7 @@ mod tests {
                 monthly_rate: 0.02,
                 interest_type: "simple".into(),
                 repayment_mode: "one_time".into(),
-                term_months: Some(12),
+                end_date: Some("2027-01-10".into()),
                 start_date: "2026-01-10".into(),
                 note: None,
             },

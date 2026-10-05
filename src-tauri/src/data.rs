@@ -12,7 +12,7 @@ use serde_json::Value;
 
 use crate::models::{Borrower, Loan, Payment, ScheduleItem};
 use crate::store::{BackendRef, StoreError};
-use crate::turso::{arg_int, arg_opt_int, arg_opt_text, arg_real, arg_text, Row, TursoClient};
+use crate::turso::{arg_int, arg_opt_text, arg_real, arg_text, Row, TursoClient};
 
 /// Transient dataset used only by the JSON backend during a single operation.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -96,7 +96,7 @@ pub fn row_to_loan(r: &Row) -> Loan {
         monthly_rate: f(&r[3]),
         interest_type: s(&r[4]),
         repayment_mode: s(&r[5]),
-        term_months: oi(&r[6]),
+        end_date: os(&r[6]),
         start_date: s(&r[7]),
         status: s(&r[8]),
         note: os(&r[9]),
@@ -134,7 +134,7 @@ pub fn row_to_schedule(r: &Row) -> ScheduleItem {
 
 // Column lists (order must match row_to_* above).
 pub const BORROWER_COLS: &str = "id,name,phone,address,photo_path,notes,created_at,updated_at";
-pub const LOAN_COLS: &str = "id,borrower_id,principal,monthly_rate,interest_type,repayment_mode,term_months,start_date,status,note,created_at,updated_at";
+pub const LOAN_COLS: &str = "id,borrower_id,principal,monthly_rate,interest_type,repayment_mode,end_date,start_date,status,note,created_at,updated_at";
 pub const PAYMENT_COLS: &str =
     "id,loan_id,amount,interest_component,principal_component,paid_date,note,created_at,updated_at";
 pub const SCHEDULE_COLS: &str =
@@ -163,7 +163,7 @@ pub fn loan_args(l: &Loan) -> Vec<Value> {
         arg_real(l.monthly_rate),
         arg_text(&l.interest_type),
         arg_text(&l.repayment_mode),
-        arg_opt_int(l.term_months),
+        arg_opt_text(&l.end_date),
         arg_text(&l.start_date),
         arg_text(&l.status),
         arg_opt_text(&l.note),

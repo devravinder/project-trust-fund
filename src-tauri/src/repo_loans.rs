@@ -60,8 +60,16 @@ pub fn interest_accrued(loan: &Loan, as_of: NaiveDate) -> f64 {
         Err(_) => return 0.0,
     };
     let elapsed = whole_months_between(start, as_of);
-    let months = effective_months(elapsed, loan.term_months);
+    let months = effective_months(elapsed, loan_term_months(loan));
     simple_interest(loan.principal, loan.monthly_rate, months)
+}
+
+/// Derive the loan's term (whole months) from start_date to end_date.
+/// None if no end date (open-ended) — interest then accrues on elapsed months.
+pub fn loan_term_months(loan: &Loan) -> Option<i64> {
+    loan.end_date
+        .as_deref()
+        .and_then(|end| crate::interest::months_between_dates(&loan.start_date, end))
 }
 
 fn summarize(d: &Dataset, loan: &Loan) -> LoanSummary {
@@ -154,7 +162,7 @@ pub fn create(d: &mut Dataset, input: LoanInput) -> Result<Loan, String> {
         monthly_rate: input.monthly_rate,
         interest_type: input.interest_type,
         repayment_mode: input.repayment_mode.clone(),
-        term_months: input.term_months,
+        end_date: input.end_date.clone(),
         start_date: input.start_date.clone(),
         status: "active".into(),
         note: input.note,
@@ -163,8 +171,10 @@ pub fn create(d: &mut Dataset, input: LoanInput) -> Result<Loan, String> {
     };
 
     // Generate installment schedule if applicable (v1: simple interest).
+    // Installment count = whole months between start and end date.
     if input.repayment_mode == "installments" {
-        if let Some(n) = input.term_months {
+        let n = loan_term_months(&loan).unwrap_or(0);
+        if n > 0 {
             let start = NaiveDate::parse_from_str(&input.start_date, "%Y-%m-%d")
                 .map_err(|e| format!("bad start_date: {e}"))?;
             for r in generate_schedule_simple(input.principal, input.monthly_rate, n) {
@@ -180,6 +190,8 @@ pub fn create(d: &mut Dataset, input: LoanInput) -> Result<Loan, String> {
                     status: "pending".into(),
                 });
             }
+        } else {
+            return Err("installment loans need an end date after the start date".into());
         }
     }
 
@@ -293,7 +305,7 @@ mod tests {
                 monthly_rate: 0.02,
                 interest_type: "simple".into(),
                 repayment_mode: "installments".into(),
-                term_months: Some(5),
+                end_date: Some("2026-06-15".into()),
                 start_date: "2026-01-15".into(),
                 note: None,
             },
@@ -317,7 +329,7 @@ mod tests {
             monthly_rate: 0.02,
             interest_type: "simple".into(),
             repayment_mode: "one_time".into(),
-            term_months: Some(12),
+            end_date: Some("2027-01-10".into()),
             start_date: "2026-01-10".into(),
             status: "active".into(),
             note: None,
@@ -351,7 +363,7 @@ mod tests {
                 monthly_rate: 0.02,
                 interest_type: "simple".into(),
                 repayment_mode: "installments".into(),
-                term_months: Some(5),
+                end_date: Some("2026-06-15".into()),
                 start_date: "2026-01-15".into(),
                 note: None,
             },
