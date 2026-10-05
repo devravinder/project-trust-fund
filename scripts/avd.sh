@@ -10,9 +10,15 @@
 
 set -euo pipefail
 
+# Resolve SDK: env vars first, then the default install location.
 SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
-if [ -z "$SDK" ]; then
-  echo "ANDROID_HOME (or ANDROID_SDK_ROOT) is not set. Point it at your Android SDK." >&2
+if [ -z "$SDK" ] || [ ! -d "$SDK" ]; then
+  if [ -d "$HOME/Android/Sdk" ]; then
+    SDK="$HOME/Android/Sdk"
+  fi
+fi
+if [ -z "$SDK" ] || [ ! -d "$SDK" ]; then
+  echo "Android SDK not found. Set ANDROID_HOME (or ANDROID_SDK_ROOT), or install it to ~/Android/Sdk." >&2
   exit 1
 fi
 

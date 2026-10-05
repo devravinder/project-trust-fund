@@ -1,141 +1,98 @@
 # TrustFund — Data Model
 
-SQLite / libSQL schema. Designed for **multi-device sync** (UUID keys), auditability (timestamps), and safe history (soft-delete).
+The same logical model is persisted two ways: as one **JSON document** (offline
+backend) or as **per-row tables in Turso** (remote backend). Entities and fields
+are identical; only the storage shape differs.
 
 ## Conventions
 
-- **Primary keys:** `TEXT` UUIDs generated **on-device** (avoids autoincrement collisions across synced devices).
-- **Timestamps:** `created_at`, `updated_at` as ISO-8601 `TEXT` (UTC).
-- **Soft-delete:** `deleted_at TEXT NULL` — records are hidden, not physically removed, to preserve reports/history.
-- **Money:** `REAL`, rounded to 2 decimals. Currency fixed to INR.
-- **Dates:** ISO-8601 `TEXT` (`YYYY-MM-DD`).
+- **IDs:** `TEXT` UUIDs generated on-device (sync-safe, no autoincrement
+  collisions across devices).
+- **Timestamps:** `created_at`, `updated_at` as ISO-8601 strings (UTC).
+- **Soft-delete:** tracked via `deleted_*` id lists (JSON) / a `deleted` flag
+  (Turso) so history is preserved for reports/export. (Loan "delete with related
+  data" is a hard delete — removes the loan + its payments + schedule.)
+- **Money:** numbers rounded to 2 decimals; negative-zero normalized to 0.
+  Currency fixed to INR (₹), Indian digit grouping in the UI.
+- **Dates:** ISO-8601 (`YYYY-MM-DD`).
 
-## Tables
+## Entities
 
-### borrowers
-```sql
-CREATE TABLE borrowers (
-    id          TEXT PRIMARY KEY,        -- UUID
-    name        TEXT NOT NULL,
-    phone       TEXT,
-    address     TEXT,
-    photo_path  TEXT,                    -- local file reference (optional)
-    notes       TEXT,
-    created_at  TEXT NOT NULL,
-    updated_at  TEXT NOT NULL,
-    deleted_at  TEXT
-);
-CREATE INDEX idx_borrowers_name ON borrowers(name);
+### Borrower
+`id, name, phone?, address?, photo_path?, notes?, created_at, updated_at`
+
+### Loan
+`id, borrower_id, principal, monthly_rate (fraction, e.g. 0.02 = 2%/month),
+interest_type ('simple' | 'compound'; v1 = simple), repayment_mode ('one_time' |
+'installments'), term_months?, start_date, status ('active' | 'overdue' |
+'closed' | 'written_off'), note?, created_at, updated_at`
+
+### Payment
+`id, loan_id, amount, interest_component, principal_component, paid_date, note?,
+created_at, updated_at`
+
+### ScheduleItem (installment plan)
+Generated when `repayment_mode = 'installments'`. The plan; actuals live in
+payments.
+`id, loan_id, seq, due_date, principal_due, interest_due, total_due, status
+('pending' | 'paid' | 'partial' | 'overdue')`
+
+## JSON backend shape
+
+The whole dataset is one file (`<app-data>/trustfund.json`):
+
+```json
+{
+  "borrowers": [ { "id": "…", "name": "…", … } ],
+  "loans": [ { "id": "…", "borrower_id": "…", "principal": 10000, … } ],
+  "payments": [ { "id": "…", "loan_id": "…", "amount": 2200, … } ],
+  "schedule": [ { "id": "…", "loan_id": "…", "seq": 1, … } ],
+  "deleted_borrowers": ["…"],
+  "deleted_loans": ["…"],
+  "deleted_payments": ["…"]
+}
 ```
 
-### loans
-```sql
-CREATE TABLE loans (
-    id             TEXT PRIMARY KEY,     -- UUID
-    borrower_id    TEXT NOT NULL REFERENCES borrowers(id),
-    principal      REAL NOT NULL,
-    monthly_rate   REAL NOT NULL,        -- e.g. 0.02 for 2%/month
-    interest_type  TEXT NOT NULL CHECK (interest_type IN ('simple','compound')),
-    repayment_mode TEXT NOT NULL CHECK (repayment_mode IN ('one_time','installments')),
-    term_months    INTEGER,             -- required for installments; term for one-time (interest freezes after)
-    start_date     TEXT NOT NULL,       -- anniversary/accrual anchor
-    status         TEXT NOT NULL DEFAULT 'active'
-                    CHECK (status IN ('active','overdue','closed','written_off')),
-    note           TEXT,
-    created_at     TEXT NOT NULL,
-    updated_at     TEXT NOT NULL,
-    deleted_at     TEXT
-);
-CREATE INDEX idx_loans_borrower ON loans(borrower_id);
-CREATE INDEX idx_loans_status   ON loans(status);
+Memory policy: the file is loaded per operation, mutated, written back, and
+dropped — never held resident between calls.
+
+## Turso backend tables
+
+Created on connect (idempotent) via the HTTP pipeline API. A `deleted INTEGER`
+flag implements soft-delete; queries filter `WHERE deleted = 0`.
+
+```
+borrowers(id, name, phone, address, photo_path, notes, created_at, updated_at, deleted)
+loans(id, borrower_id, principal, monthly_rate, interest_type, repayment_mode,
+      term_months, start_date, status, note, created_at, updated_at, deleted)
+payments(id, loan_id, amount, interest_component, principal_component,
+         paid_date, note, created_at, updated_at, deleted)
+schedule(id, loan_id, seq, due_date, principal_due, interest_due, total_due, status)
 ```
 
-### payments (repayments)
-```sql
-CREATE TABLE payments (
-    id                 TEXT PRIMARY KEY, -- UUID
-    loan_id            TEXT NOT NULL REFERENCES loans(id),
-    amount             REAL NOT NULL,
-    interest_component REAL NOT NULL DEFAULT 0,  -- allocated to interest
-    principal_component REAL NOT NULL DEFAULT 0, -- allocated to principal
-    paid_date          TEXT NOT NULL,
-    note               TEXT,
-    created_at         TEXT NOT NULL,
-    updated_at         TEXT NOT NULL,
-    deleted_at         TEXT
-);
-CREATE INDEX idx_payments_loan ON payments(loan_id);
-CREATE INDEX idx_payments_date ON payments(paid_date);
-```
+## Computed, not stored
 
-### installment_schedule
-Generated for `repayment_mode = 'installments'`. This is the **plan**; actuals live in `payments`.
-```sql
-CREATE TABLE installment_schedule (
-    id               TEXT PRIMARY KEY,  -- UUID
-    loan_id          TEXT NOT NULL REFERENCES loans(id),
-    seq              INTEGER NOT NULL,  -- 1..N
-    due_date         TEXT NOT NULL,
-    principal_due    REAL NOT NULL,
-    interest_due     REAL NOT NULL,
-    total_due        REAL NOT NULL,
-    status           TEXT NOT NULL DEFAULT 'pending'
-                      CHECK (status IN ('pending','paid','partial','overdue')),
-    created_at       TEXT NOT NULL,
-    updated_at       TEXT NOT NULL
-);
-CREATE INDEX idx_schedule_loan ON installment_schedule(loan_id);
-CREATE INDEX idx_schedule_due  ON installment_schedule(due_date);
-```
+Balances and summaries are computed in Rust from the loaded data (see
+`interest-logic.md`), never persisted as mutable columns — avoids drift:
 
-### app_meta (optional)
-Key/value for app state (e.g., schema version, last sync marker).
-```sql
-CREATE TABLE app_meta (
-    key        TEXT PRIMARY KEY,
-    value      TEXT,
-    updated_at TEXT NOT NULL
-);
-```
+- **Outstanding principal** = `principal − Σ principal_component`
+- **Interest collected** = `Σ interest_component`
+- **Interest to date** = simple interest accrued from `start_date` to today
+  (whole months, frozen at term)
+- **Interest due** = `interest_to_date − interest_collected`
+- **Total lent** = `Σ principal` of active/overdue loans
+- **Overdue** = past term end with outstanding balance (derived at read time)
+- **Dues this month** = schedule items due in the current month, not fully paid
 
-## Computed vs stored balances
+## Migration (JSON → Turso)
 
-Balances (outstanding principal, accrued interest, collected, recovered) are **computed** from `loans` + `payments` using the rules in `interest-logic.md`, not stored as mutable columns — this avoids drift and sync conflicts. Dashboard summaries may be cached in memory or `app_meta` if performance requires, recomputed from source.
+On connecting Turso, if the local JSON has data the UI prompts:
+- **Yes** → all JSON records are inserted into Turso, then the JSON file is
+  deleted.
+- **No** → the JSON file is deleted (discarded).
 
-## Key queries (illustrative)
+## Multi-device notes
 
-```sql
--- Principal recovered per loan
-SELECT loan_id, SUM(principal_component) AS principal_recovered
-FROM payments WHERE deleted_at IS NULL GROUP BY loan_id;
-
--- Interest collected per loan
-SELECT loan_id, SUM(interest_component) AS interest_collected
-FROM payments WHERE deleted_at IS NULL GROUP BY loan_id;
-
--- Total lent (active loans)
-SELECT SUM(principal) FROM loans
-WHERE deleted_at IS NULL AND status IN ('active','overdue');
-
--- Interest collected this month
-SELECT SUM(interest_component) FROM payments
-WHERE deleted_at IS NULL AND paid_date >= :month_start AND paid_date < :month_end;
-
--- Dues this month (from schedule)
-SELECT * FROM installment_schedule
-WHERE status IN ('pending','partial','overdue')
-  AND due_date >= :month_start AND due_date < :month_end
-ORDER BY due_date;
-```
-
-## Status derivation
-
-- **overdue:** loan/installment past due date with outstanding balance → derived at read time (or refreshed on app open).
-- **closed / written_off:** set manually by the user.
-- Outstanding principal = `principal − SUM(principal_component)`; accrued interest per `interest-logic.md`.
-
-## Sync notes
-
-- UUID keys + soft-delete make records merge-safe across devices.
-- `updated_at` supports last-writer-wins style resolution if needed.
-- Photos stored as local files (path referenced); keep sizes small to avoid bloating the synced DB.
+- UUID ids keep records merge-safe.
+- Turso is the shared source of truth; reads are live (no stale local cache in
+  connected mode).
