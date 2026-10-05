@@ -1,9 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { X } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { formatCurrency, formatDate } from '@/lib/format'
 import {
@@ -12,26 +10,6 @@ import {
   type DueItem,
   type OverdueLoan,
 } from '@/lib/api'
-
-const DISMISSED_KEY = 'trustfund-dismissed-dues'
-
-function loadDismissed(): Set<string> {
-  try {
-    const raw = localStorage.getItem(DISMISSED_KEY)
-    return new Set(raw ? (JSON.parse(raw) as string[]) : [])
-  } catch {
-    return new Set()
-  }
-}
-
-function saveDismissed(set: Set<string>) {
-  localStorage.setItem(DISMISSED_KEY, JSON.stringify([...set]))
-}
-
-/** Stable key for a due notification (loan + due date). */
-function dueKey(d: DueItem): string {
-  return `${d.loan_id}:${d.due_date}`
-}
 
 function StatCard({
   label,
@@ -67,20 +45,8 @@ export function DashboardPage() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null)
   const [dues, setDues] = useState<DueItem[]>([])
   const [overdue, setOverdue] = useState<OverdueLoan[]>([])
-  const [dismissed, setDismissed] = useState<Set<string>>(() => loadDismissed())
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
-
-  const dismiss = (d: DueItem) => {
-    setDismissed((prev) => {
-      const next = new Set(prev)
-      next.add(dueKey(d))
-      saveDismissed(next)
-      return next
-    })
-  }
-
-  const visibleDues = dues.filter((d) => !dismissed.has(dueKey(d)))
 
   useEffect(() => {
     async function load() {
@@ -154,36 +120,24 @@ export function DashboardPage() {
           </div>
 
           <h2 className="mb-2 mt-6 text-lg font-semibold">Dues this month</h2>
-          {visibleDues.length === 0 ? (
+          {dues.length === 0 ? (
             <p className="text-muted-foreground">No dues this month.</p>
           ) : (
             <div className="grid gap-2">
-              {visibleDues.map((d) => (
-                <Card key={dueKey(d)}>
+              {dues.map((d, i) => (
+                <Card
+                  key={`${d.loan_id}:${d.due_date}:${i}`}
+                  className="cursor-pointer transition-colors hover:bg-accent"
+                  onClick={() => navigate(`/loans/${d.loan_id}`)}
+                >
                   <CardContent className="flex items-center justify-between gap-2 p-4">
-                    <button
-                      type="button"
-                      className="flex flex-1 items-center justify-between text-left"
-                      onClick={() => navigate(`/loans/${d.loan_id}`)}
-                    >
-                      <div>
-                        <p className="font-medium">{d.borrower_name}</p>
-                        <p className="text-sm text-muted-foreground">
-                          Due {formatDate(d.due_date)}
-                        </p>
-                      </div>
-                      <p className="font-medium">
-                        {formatCurrency(d.total_due)}
+                    <div>
+                      <p className="font-medium">{d.borrower_name}</p>
+                      <p className="text-sm text-muted-foreground">
+                        Due {formatDate(d.due_date)}
                       </p>
-                    </button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Clear notification"
-                      onClick={() => dismiss(d)}
-                    >
-                      <X />
-                    </Button>
+                    </div>
+                    <p className="font-medium">{formatCurrency(d.total_due)}</p>
                   </CardContent>
                 </Card>
               ))}
