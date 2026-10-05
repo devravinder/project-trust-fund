@@ -160,60 +160,80 @@ fn delete_local_json(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-// ---- Dev seed ----
+// ---- Dev seed / clear ----
+
+/// Erase all data in the active store (borrowers, loans, payments, schedule).
+#[tauri::command]
+async fn clear_all_data(state: tauri::State<'_, StoreState>) -> Result<(), String> {
+    data::write(&state, |d| {
+        d.borrowers.clear();
+        d.loans.clear();
+        d.payments.clear();
+        d.schedule.clear();
+        d.deleted_borrowers.clear();
+        d.deleted_loans.clear();
+        d.deleted_payments.clear();
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
 
 #[tauri::command]
 async fn dev_seed(state: tauri::State<'_, StoreState>) -> Result<(), String> {
     data::write(&state, |d| {
-        let ramesh = repo_borrowers::create(
-            d,
-            BorrowerInput {
-                name: "Ramesh Kumar".into(),
-                phone: Some("9876543210".into()),
-                address: Some("Bengaluru".into()),
-                photo_path: None,
-                notes: None,
-            },
-        );
-        let asha = repo_borrowers::create(
-            d,
-            BorrowerInput {
-                name: "Asha Verma".into(),
-                phone: Some("9123456780".into()),
-                address: None,
-                photo_path: None,
-                notes: None,
-            },
-        );
-        if let Ok(loan1) = repo_loans::create(
+        // Helper to add a borrower.
+        let mut add_borrower = |name: &str, phone: &str, addr: Option<&str>| {
+            repo_borrowers::create(
+                d,
+                BorrowerInput {
+                    name: name.into(),
+                    phone: Some(phone.into()),
+                    address: addr.map(|a| a.into()),
+                    photo_path: None,
+                    notes: None,
+                },
+            )
+            .id
+        };
+
+        let ramesh = add_borrower("Ramesh Kumar", "9876543210", Some("Bengaluru"));
+        let asha = add_borrower("Asha Verma", "9123456780", None);
+        let suresh = add_borrower("Suresh Rao", "9988776655", Some("Hyderabad"));
+        let meena = add_borrower("Meena Nair", "9001122334", Some("Kochi"));
+        let imran = add_borrower("Imran Shaikh", "9765432109", Some("Pune"));
+
+        // 1) Ramesh — installment loan with one payment made.
+        if let Ok(l) = repo_loans::create(
             d,
             LoanInput {
-                borrower_id: ramesh.id,
+                borrower_id: ramesh,
                 principal: 10_000.0,
                 monthly_rate: 0.02,
                 interest_type: "simple".into(),
                 repayment_mode: "installments".into(),
                 end_date: Some("2026-06-15".into()),
                 start_date: "2026-01-15".into(),
-                note: Some("Sample installment loan".into()),
+                note: Some("Installment loan".into()),
             },
         ) {
             let _ = repo_payments::create(
                 d,
                 PaymentInput {
-                    loan_id: loan1.id,
+                    loan_id: l.id,
                     amount: 2_200.0,
                     interest_component: None,
                     principal_component: None,
                     paid_date: "2026-02-15".into(),
-                    note: None,
+                    note: Some("First installment".into()),
                 },
             );
         }
+
+        // 2) Asha — zero-interest one-time (track-only).
         let _ = repo_loans::create(
             d,
             LoanInput {
-                borrower_id: asha.id,
+                borrower_id: asha,
                 principal: 5_000.0,
                 monthly_rate: 0.0,
                 interest_type: "simple".into(),
@@ -223,6 +243,86 @@ async fn dev_seed(state: tauri::State<'_, StoreState>) -> Result<(), String> {
                 note: Some("Zero-interest, friend".into()),
             },
         );
+
+        // 3) Suresh — overdue one-time loan (ended in the past, unpaid).
+        let _ = repo_loans::create(
+            d,
+            LoanInput {
+                borrower_id: suresh,
+                principal: 20_000.0,
+                monthly_rate: 0.015,
+                interest_type: "simple".into(),
+                repayment_mode: "one_time".into(),
+                end_date: Some("2025-06-01".into()),
+                start_date: "2025-01-01".into(),
+                note: Some("Overdue — follow up".into()),
+            },
+        );
+
+        // 4) Meena — larger installment loan, partially paid.
+        if let Ok(l) = repo_loans::create(
+            d,
+            LoanInput {
+                borrower_id: meena,
+                principal: 36_000.0,
+                monthly_rate: 0.02,
+                interest_type: "simple".into(),
+                repayment_mode: "installments".into(),
+                end_date: Some("2026-12-01".into()),
+                start_date: "2026-01-01".into(),
+                note: None,
+            },
+        ) {
+            let _ = repo_payments::create(
+                d,
+                PaymentInput {
+                    loan_id: l.id.clone(),
+                    amount: 3_720.0,
+                    interest_component: None,
+                    principal_component: None,
+                    paid_date: "2026-02-01".into(),
+                    note: None,
+                },
+            );
+            let _ = repo_payments::create(
+                d,
+                PaymentInput {
+                    loan_id: l.id,
+                    amount: 3_660.0,
+                    interest_component: None,
+                    principal_component: None,
+                    paid_date: "2026-03-01".into(),
+                    note: None,
+                },
+            );
+        }
+
+        // 5) Imran — one-time loan with interest, one interest payment.
+        if let Ok(l) = repo_loans::create(
+            d,
+            LoanInput {
+                borrower_id: imran,
+                principal: 15_000.0,
+                monthly_rate: 0.025,
+                interest_type: "simple".into(),
+                repayment_mode: "one_time".into(),
+                end_date: Some("2026-10-01".into()),
+                start_date: "2026-02-10".into(),
+                note: None,
+            },
+        ) {
+            let _ = repo_payments::create(
+                d,
+                PaymentInput {
+                    loan_id: l.id,
+                    amount: 375.0,
+                    interest_component: None,
+                    principal_component: None,
+                    paid_date: "2026-03-10".into(),
+                    note: Some("Interest only".into()),
+                },
+            );
+        }
     })
     .await
     .map_err(|e| e.to_string())
@@ -514,6 +614,7 @@ pub fn run() {
             migrate_json_to_turso,
             delete_local_json,
             dev_seed,
+            clear_all_data,
             borrowers_list,
             borrower_get,
             borrower_create,

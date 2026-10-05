@@ -20,12 +20,22 @@ export function SettingsPage() {
   const [shareOpen, setShareOpen] = useState(false)
   const [migrateOpen, setMigrateOpen] = useState(false)
   const [disconnectOpen, setDisconnectOpen] = useState(false)
+  const [clearAllOpen, setClearAllOpen] = useState(false)
 
   useEffect(() => {
     db.hasCredentials()
       .then(setHasCreds)
       .catch((e) => toast.error(String(e)))
   }, [])
+
+  const confirmClearAll = async () => {
+    try {
+      await db.clearAll()
+      toast.success('All data cleared')
+    } catch (e) {
+      toast.error(String(e))
+    }
+  }
 
   const confirmDisconnect = async () => {
     try {
@@ -226,8 +236,31 @@ export function SettingsPage() {
           <p className="mt-2 text-xs text-muted-foreground">
             Adds sample borrowers, loans, and a payment for testing.
           </p>
+
+          <div className="mt-4 border-t pt-4">
+            <Button
+              variant="destructive"
+              onClick={() => setClearAllOpen(true)}
+            >
+              Clear all data
+            </Button>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Permanently deletes all borrowers, loans, and payments from the
+              current store.
+            </p>
+          </div>
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={clearAllOpen}
+        onOpenChange={setClearAllOpen}
+        title="Clear all data?"
+        description="This permanently deletes ALL borrowers, loans, and payments from the current store. This cannot be undone."
+        confirmText="Clear everything"
+        destructive
+        onConfirm={confirmClearAll}
+      />
     </div>
   )
 }

@@ -92,6 +92,7 @@ export const db = {
   /** Discard the local JSON file (user declined migration). */
   deleteLocalJson: () => invoke<void>('delete_local_json'),
   seed: () => invoke<void>('dev_seed'),
+  clearAll: () => invoke<void>('clear_all_data'),
 }
 
 // ---- Borrowers ----
