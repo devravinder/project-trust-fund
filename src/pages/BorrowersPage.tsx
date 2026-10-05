@@ -9,6 +9,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { borrowers } from '@/lib/api'
 import type { Borrower } from '@/types'
 import { BorrowerFormDialog } from '@/features/borrowers/BorrowerFormDialog'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 export function BorrowersPage() {
   const [items, setItems] = useState<Borrower[]>([])
@@ -16,6 +17,7 @@ export function BorrowersPage() {
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Borrower | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Borrower | null>(null)
   const navigate = useNavigate()
 
   const load = useCallback(async (term: string) => {
@@ -44,10 +46,10 @@ export function BorrowersPage() {
     setDialogOpen(true)
   }
 
-  const handleDelete = async (b: Borrower) => {
-    if (!confirm(`Delete ${b.name}? This hides them but keeps history.`)) return
+  const confirmDelete = async () => {
+    if (!deleteTarget) return
     try {
-      await borrowers.remove(b.id)
+      await borrowers.remove(deleteTarget.id)
       toast.success('Borrower deleted')
       void load(search)
     } catch (e) {
@@ -110,7 +112,7 @@ export function BorrowersPage() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => handleDelete(b)}
+                    onClick={() => setDeleteTarget(b)}
                     aria-label={`Delete ${b.name}`}
                   >
                     <Trash2 />
@@ -127,6 +129,20 @@ export function BorrowersPage() {
         onOpenChange={setDialogOpen}
         borrower={editing}
         onSaved={() => void load(search)}
+      />
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(o) => !o && setDeleteTarget(null)}
+        title="Delete borrower?"
+        description={
+          deleteTarget
+            ? `Delete ${deleteTarget.name}? They are hidden from lists but their history is kept.`
+            : ''
+        }
+        confirmText="Delete"
+        destructive
+        onConfirm={confirmDelete}
       />
     </div>
   )

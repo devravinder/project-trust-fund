@@ -4,7 +4,12 @@ import { ArrowLeft } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { formatCurrency, formatDate, formatRate } from '@/lib/format'
+import {
+  formatCurrency,
+  formatDate,
+  formatRate,
+  formatLoanStatus,
+} from '@/lib/format'
 import { borrowers, loans, type LoanSummary } from '@/lib/api'
 import type { Borrower } from '@/types'
 
@@ -85,7 +90,7 @@ export function BorrowerDetailPage() {
                     {formatCurrency(l.principal)} · {formatRate(l.monthly_rate)}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    {formatDate(l.start_date)} · {l.status.replace('_', ' ')}
+                    {formatDate(l.start_date)} · {formatLoanStatus(l.status)}
                   </p>
                 </div>
                 <p className="text-sm">

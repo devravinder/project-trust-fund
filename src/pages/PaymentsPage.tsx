@@ -8,12 +8,14 @@ import { Card, CardContent } from '@/components/ui/card'
 import { formatCurrency, formatDate } from '@/lib/format'
 import { payments, type PaymentView } from '@/lib/api'
 import { PaymentFormDialog } from '@/features/payments/PaymentFormDialog'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 export function PaymentsPage() {
   const [items, setItems] = useState<PaymentView[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<PaymentView | null>(null)
 
   const load = useCallback(async (term: string) => {
     setLoading(true)
@@ -31,10 +33,10 @@ export function PaymentsPage() {
     return () => clearTimeout(t)
   }, [search, load])
 
-  const handleDelete = async (p: PaymentView) => {
-    if (!confirm('Delete this payment? Balances will be recalculated.')) return
+  const confirmDelete = async () => {
+    if (!deleteTarget) return
     try {
-      await payments.remove(p.id)
+      await payments.remove(deleteTarget.id)
       toast.success('Payment deleted')
       void load(search)
     } catch (e) {
@@ -86,7 +88,7 @@ export function PaymentsPage() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => handleDelete(p)}
+                  onClick={() => setDeleteTarget(p)}
                   aria-label="Delete payment"
                 >
                   <Trash2 />
@@ -101,6 +103,16 @@ export function PaymentsPage() {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         onSaved={() => void load(search)}
+      />
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(o) => !o && setDeleteTarget(null)}
+        title="Delete payment?"
+        description="This removes the payment and recalculates the loan's balances."
+        confirmText="Delete"
+        destructive
+        onConfirm={confirmDelete}
       />
     </div>
   )

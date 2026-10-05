@@ -12,7 +12,12 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog'
-import { formatCurrency, formatDate, formatRate } from '@/lib/format'
+import {
+  formatCurrency,
+  formatDate,
+  formatRate,
+  formatLoanStatus,
+} from '@/lib/format'
 import { loans, payments as paymentsApi, type LoanSummary } from '@/lib/api'
 import type { LoanStatus, Payment, ScheduleItem } from '@/types'
 import { PaymentFormDialog } from '@/features/payments/PaymentFormDialog'
@@ -53,7 +58,7 @@ export function LoanDetailPage() {
   const changeStatus = async (status: LoanStatus) => {
     try {
       await loans.setStatus(id, status)
-      toast.success(`Loan marked ${status.replace('_', ' ')}`)
+      toast.success(`Loan marked ${formatLoanStatus(status).toLowerCase()}`)
       void load()
     } catch (e) {
       toast.error(String(e))
@@ -154,7 +159,7 @@ export function LoanDetailPage() {
           <CardContent className="p-4">
             <p className="text-sm text-muted-foreground">Status</p>
             <p className="text-xl font-bold capitalize">
-              {summary.status.replace('_', ' ')}
+              {formatLoanStatus(summary.status)}
             </p>
           </CardContent>
         </Card>
@@ -176,7 +181,7 @@ export function LoanDetailPage() {
             size="sm"
             onClick={() => changeStatus('written_off')}
           >
-            Write off
+            Mark as lost
           </Button>
         )}
         {summary.status !== 'active' && (

@@ -7,7 +7,12 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
-import { formatCurrency, formatRate, formatDate } from '@/lib/format'
+import {
+  formatCurrency,
+  formatRate,
+  formatDate,
+  formatLoanStatus,
+} from '@/lib/format'
 import { loans, type LoanSummary } from '@/lib/api'
 import type { LoanStatus } from '@/types'
 import { LoanFormDialog } from '@/features/loans/LoanFormDialog'
@@ -112,7 +117,7 @@ export function LoansPage() {
                       statusColor[l.status],
                     )}
                   >
-                    {l.status.replace('_', ' ')}
+                    {formatLoanStatus(l.status)}
                   </span>
                 </div>
                 <div className="mt-2 flex gap-4 text-sm">

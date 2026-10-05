@@ -11,6 +11,7 @@ import { useTheme } from '@/components/theme/ThemeProvider'
 import { ConnectDialog } from '@/features/connection/ConnectDialog'
 import { ShareConnectionDialog } from '@/features/connection/ShareConnectionDialog'
 import { MigrationPromptDialog } from '@/features/connection/MigrationPromptDialog'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 export function SettingsPage() {
   const { theme, setTheme } = useTheme()
@@ -18,6 +19,7 @@ export function SettingsPage() {
   const [connectOpen, setConnectOpen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
   const [migrateOpen, setMigrateOpen] = useState(false)
+  const [disconnectOpen, setDisconnectOpen] = useState(false)
 
   useEffect(() => {
     db.hasCredentials()
@@ -25,13 +27,7 @@ export function SettingsPage() {
       .catch((e) => toast.error(String(e)))
   }, [])
 
-  const handleDisconnect = async () => {
-    if (
-      !confirm(
-        'Disconnect from Turso? Your cloud data stays untouched; this device switches back to local offline storage.',
-      )
-    )
-      return
+  const confirmDisconnect = async () => {
     try {
       await db.clearCredentials()
       setHasCreds(false)
@@ -111,7 +107,7 @@ export function SettingsPage() {
                 <Button variant="outline" onClick={() => setShareOpen(true)}>
                   Share connection (QR)
                 </Button>
-                <Button variant="outline" onClick={handleDisconnect}>
+                <Button variant="outline" onClick={() => setDisconnectOpen(true)}>
                   Disconnect
                 </Button>
               </div>
@@ -181,6 +177,15 @@ export function SettingsPage() {
         open={migrateOpen}
         onOpenChange={setMigrateOpen}
         onDone={() => {}}
+      />
+
+      <ConfirmDialog
+        open={disconnectOpen}
+        onOpenChange={setDisconnectOpen}
+        title="Disconnect from Turso?"
+        description="Your cloud data stays untouched; this device switches back to local offline storage."
+        confirmText="Disconnect"
+        onConfirm={confirmDisconnect}
       />
 
       <Card className="mt-4">

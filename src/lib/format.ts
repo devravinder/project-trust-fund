@@ -28,3 +28,19 @@ export function formatDate(iso: string): string {
 export function formatRate(rate: number): string {
   return `${(rate * 100).toFixed(2)}%/mo`
 }
+
+/** Human-friendly loan status label. */
+export function formatLoanStatus(status: string): string {
+  switch (status) {
+    case 'written_off':
+      return 'Lost'
+    case 'active':
+      return 'Active'
+    case 'overdue':
+      return 'Overdue'
+    case 'closed':
+      return 'Closed'
+    default:
+      return status.replace('_', ' ')
+  }
+}
