@@ -53,11 +53,31 @@ pub fn json_load(path: &PathBuf) -> Result<Dataset, StoreError> {
 }
 
 pub fn json_save(path: &PathBuf, d: &Dataset) -> Result<(), StoreError> {
+    use std::io::Write;
+
     let text = serde_json::to_string_pretty(d).map_err(|e| StoreError::Serde(e.to_string()))?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| StoreError::Io(e.to_string()))?;
     }
-    std::fs::write(path, text).map_err(|e| StoreError::Io(e.to_string()))
+
+    // Atomic write: write to a temp file next to the target, flush+fsync it,
+    // then rename over the target. A rename on the same volume is atomic, so a
+    // crash mid-write never leaves a half-written data file — the previous
+    // good file stays intact; at worst the single in-flight change is lost.
+    let tmp = path.with_extension("json.tmp");
+    {
+        let mut f = std::fs::File::create(&tmp).map_err(|e| StoreError::Io(e.to_string()))?;
+        f.write_all(text.as_bytes())
+            .map_err(|e| StoreError::Io(e.to_string()))?;
+        f.flush().map_err(|e| StoreError::Io(e.to_string()))?;
+        // Best-effort durability: fsync the data to disk before the rename.
+        let _ = f.sync_all();
+    }
+    std::fs::rename(&tmp, path).map_err(|e| {
+        // Clean up the temp file if the rename failed.
+        let _ = std::fs::remove_file(&tmp);
+        StoreError::Io(e.to_string())
+    })
 }
 
 // ---- Turso row mapping ----
@@ -345,3 +365,40 @@ where
         .await
 }
 
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::Borrower;
+
+    #[test]
+    fn json_save_is_atomic_and_round_trips() {
+        let dir = std::env::temp_dir().join("trustfund_atomic_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("atomic.json");
+        let _ = std::fs::remove_file(&path);
+
+        let mut d = Dataset::default();
+        d.borrowers.push(Borrower {
+            id: "b1".into(),
+            name: "Atomic Test".into(),
+            phone: None,
+            address: None,
+            photo_path: None,
+            notes: None,
+            created_at: "now".into(),
+            updated_at: "now".into(),
+        });
+
+        json_save(&path, &d).unwrap();
+
+        // Reloads correctly.
+        let loaded = json_load(&path).unwrap();
+        assert_eq!(loaded.borrowers.len(), 1);
+        assert_eq!(loaded.borrowers[0].name, "Atomic Test");
+
+        // No stray temp file left behind.
+        assert!(!path.with_extension("json.tmp").exists());
+    }
+}
