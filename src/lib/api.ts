@@ -23,6 +23,12 @@ export interface PaymentView extends Payment {
   borrower_name: string
 }
 
+export interface PaymentDetail extends Payment {
+  borrower_name: string
+  loan_principal: number
+  loan_start_date: string
+}
+
 export interface DashboardSummary {
   total_lent: number
   outstanding_principal: number
@@ -129,6 +135,7 @@ export const loans = {
 
 export const payments = {
   list: (search?: string) => invoke<PaymentView[]>('payments_list', { search }),
+  get: (id: string) => invoke<PaymentDetail | null>('payment_get', { id }),
   forLoan: (loanId: string) =>
     invoke<Payment[]>('payments_for_loan', { loanId }),
   create: (input: PaymentInput) => invoke<Payment>('payment_create', { input }),

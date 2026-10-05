@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Plus, Search, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -16,6 +17,7 @@ export function PaymentsPage() {
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<PaymentView | null>(null)
+  const navigate = useNavigate()
 
   const load = useCallback(async (term: string) => {
     setLoading(true)
@@ -74,8 +76,12 @@ export function PaymentsPage() {
         <div className="grid gap-2">
           {items.map((p) => (
             <Card key={p.id}>
-              <CardContent className="flex items-center justify-between p-4">
-                <div>
+              <CardContent className="flex items-center justify-between gap-2 p-4">
+                <button
+                  type="button"
+                  className="flex-1 text-left"
+                  onClick={() => navigate(`/payments/${p.id}`)}
+                >
                   <p className="font-medium">
                     {p.borrower_name} · {formatCurrency(p.amount)}
                   </p>
@@ -84,7 +90,7 @@ export function PaymentsPage() {
                     {formatCurrency(p.interest_component)} · principal{' '}
                     {formatCurrency(p.principal_component)}
                   </p>
-                </div>
+                </button>
                 <Button
                   variant="ghost"
                   size="icon"

@@ -102,6 +102,11 @@ export function LoanDetailPage() {
             {summary.repayment_mode.replace('_', '-')} ·{' '}
             {formatDate(summary.start_date)}
           </p>
+          {summary.note && (
+            <p className="mt-1 text-sm italic text-muted-foreground">
+              “{summary.note}”
+            </p>
+          )}
         </div>
         <Button onClick={() => setPayOpen(true)}>
           <Plus /> Payment
@@ -252,19 +257,28 @@ export function LoanDetailPage() {
           ) : (
             <div className="grid gap-2">
               {loanPayments.map((p) => (
-                <div
+                <button
                   key={p.id}
-                  className="flex items-center justify-between border-b pb-2 text-sm last:border-0"
+                  type="button"
+                  onClick={() => navigate(`/payments/${p.id}`)}
+                  className="w-full rounded-md border-b pb-2 text-left text-sm last:border-0 hover:bg-accent"
                 >
-                  <span>{formatDate(p.paid_date)}</span>
-                  <span className="text-muted-foreground">
-                    int {formatCurrency(p.interest_component)} · prin{' '}
-                    {formatCurrency(p.principal_component)}
-                  </span>
-                  <span className="font-medium">
-                    {formatCurrency(p.amount)}
-                  </span>
-                </div>
+                  <div className="flex items-center justify-between">
+                    <span>{formatDate(p.paid_date)}</span>
+                    <span className="text-muted-foreground">
+                      int {formatCurrency(p.interest_component)} · prin{' '}
+                      {formatCurrency(p.principal_component)}
+                    </span>
+                    <span className="font-medium">
+                      {formatCurrency(p.amount)}
+                    </span>
+                  </div>
+                  {p.note && (
+                    <p className="mt-0.5 text-xs italic text-muted-foreground">
+                      “{p.note}”
+                    </p>
+                  )}
+                </button>
               ))}
             </div>
           )}

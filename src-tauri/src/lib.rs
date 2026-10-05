@@ -515,6 +515,16 @@ async fn payments_for_loan(
 }
 
 #[tauri::command]
+async fn payment_get(
+    state: tauri::State<'_, StoreState>,
+    id: String,
+) -> Result<Option<repo_payments::PaymentDetail>, String> {
+    data::read(&state, |d| repo_payments::get_detail(d, &id))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn payment_create(
     state: tauri::State<'_, StoreState>,
     input: PaymentInput,
@@ -646,6 +656,7 @@ pub fn run() {
             loan_schedule,
             payments_list,
             payments_for_loan,
+            payment_get,
             payment_create,
             payment_delete,
             dashboard_summary,

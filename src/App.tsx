@@ -26,6 +26,11 @@ const LoanDetailPage = lazy(() =>
 const PaymentsPage = lazy(() =>
   import('@/pages/PaymentsPage').then((m) => ({ default: m.PaymentsPage })),
 )
+const PaymentDetailPage = lazy(() =>
+  import('@/pages/PaymentDetailPage').then((m) => ({
+    default: m.PaymentDetailPage,
+  })),
+)
 const ReportsPage = lazy(() =>
   import('@/pages/ReportsPage').then((m) => ({ default: m.ReportsPage })),
 )
@@ -50,6 +55,7 @@ const router = createHashRouter([
       { path: 'loans', element: withSuspense(<LoansPage />) },
       { path: 'loans/:id', element: withSuspense(<LoanDetailPage />) },
       { path: 'payments', element: withSuspense(<PaymentsPage />) },
+      { path: 'payments/:id', element: withSuspense(<PaymentDetailPage />) },
       { path: 'reports', element: withSuspense(<ReportsPage />) },
       { path: 'settings', element: withSuspense(<SettingsPage />) },
     ],

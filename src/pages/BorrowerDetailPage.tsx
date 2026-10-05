@@ -64,6 +64,11 @@ export function BorrowerDetailPage() {
           {[borrower.phone, borrower.address].filter(Boolean).join(' · ') ||
             'No contact details'}
         </p>
+        {borrower.notes && (
+          <p className="mt-1 text-sm italic text-muted-foreground">
+            “{borrower.notes}”
+          </p>
+        )}
       </div>
 
       <Card className="mb-6 max-w-sm">

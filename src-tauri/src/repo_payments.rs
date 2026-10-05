@@ -16,6 +16,15 @@ pub struct PaymentView {
     pub borrower_name: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct PaymentDetail {
+    #[serde(flatten)]
+    pub payment: Payment,
+    pub borrower_name: String,
+    pub loan_principal: f64,
+    pub loan_start_date: String,
+}
+
 fn active(d: &Dataset) -> impl Iterator<Item = &Payment> {
     d.payments
         .iter()
@@ -49,6 +58,21 @@ pub fn list(d: &Dataset, search: Option<&str>) -> Vec<PaymentView> {
         .collect();
     out.sort_by(|a, b| b.payment.paid_date.cmp(&a.payment.paid_date));
     out
+}
+
+/// Single payment with borrower + loan context for the detail view.
+pub fn get_detail(d: &Dataset, id: &str) -> Option<PaymentDetail> {
+    let p = active(d).find(|p| p.id == id)?.clone();
+    let loan = d.loans.iter().find(|l| l.id == p.loan_id);
+    let (loan_principal, loan_start_date) = loan
+        .map(|l| (l.principal, l.start_date.clone()))
+        .unwrap_or((0.0, String::new()));
+    Some(PaymentDetail {
+        borrower_name: borrower_name_for_loan(d, &p.loan_id),
+        loan_principal,
+        loan_start_date,
+        payment: p,
+    })
 }
 
 pub fn list_for_loan(d: &Dataset, loan_id: &str) -> Vec<Payment> {
