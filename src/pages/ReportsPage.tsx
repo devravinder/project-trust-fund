@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Bar,
   BarChart,
@@ -12,6 +12,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/button'
@@ -22,12 +23,23 @@ import { reports, type MonthlyPoint, type PersonReport } from '@/lib/api'
 type Tab = 'time' | 'person'
 
 const DONUT_COLORS = ['#16a34a', '#f59e0b']
+const WINDOW = 6 // months shown at once
+
+/** Format a "YYYY-MM" string as "Mon YYYY". */
+function monthLabel(ym: string): string {
+  const [y, m] = ym.split('-').map(Number)
+  if (!y || !m) return ym
+  const d = new Date(y, m - 1, 1)
+  return d.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })
+}
 
 export function ReportsPage() {
   const [tab, setTab] = useState<Tab>('time')
   const [monthly, setMonthly] = useState<MonthlyPoint[]>([])
   const [people, setPeople] = useState<PersonReport[]>([])
   const [loading, setLoading] = useState(true)
+  // Offset from the latest window: 0 = most recent WINDOW months, 1 = older, etc.
+  const [monthOffset, setMonthOffset] = useState(0)
 
   useEffect(() => {
     async function load() {
@@ -39,6 +51,7 @@ export function ReportsPage() {
         ])
         setMonthly(m)
         setPeople(p)
+        setMonthOffset(0)
       } catch (e) {
         toast.error(String(e))
       } finally {
@@ -47,6 +60,23 @@ export function ReportsPage() {
     }
     void load()
   }, [])
+
+  // Window the monthly data (data is ascending by month). offset pages backward.
+  const windowed = useMemo(() => {
+    const end = monthly.length - monthOffset * WINDOW
+    const start = Math.max(0, end - WINDOW)
+    return monthly.slice(start, Math.max(start, end))
+  }, [monthly, monthOffset])
+
+  const canOlder = monthly.length - (monthOffset + 1) * WINDOW > 0
+  const canNewer = monthOffset > 0
+  const first = windowed[0]
+  const last = windowed[windowed.length - 1]
+  const rangeLabel = !first
+    ? ''
+    : first === last
+      ? monthLabel(first.month)
+      : `${monthLabel(first.month)} – ${monthLabel(last!.month)}`
 
   const totalRecovered = people.reduce((s, p) => s + p.principal_recovered, 0)
   const totalOutstanding = people.reduce(
@@ -85,18 +115,46 @@ export function ReportsPage() {
         <div className="grid gap-4">
           <Card>
             <CardHeader>
-              <CardTitle>Collected per month</CardTitle>
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle>Collected per month</CardTitle>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    aria-label="Older months"
+                    disabled={!canOlder}
+                    onClick={() => setMonthOffset((o) => o + 1)}
+                  >
+                    <ChevronLeft />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    aria-label="Newer months"
+                    disabled={!canNewer}
+                    onClick={() => setMonthOffset((o) => Math.max(0, o - 1))}
+                  >
+                    <ChevronRight />
+                  </Button>
+                </div>
+              </div>
+              {rangeLabel && (
+                <p className="text-xs text-muted-foreground">{rangeLabel}</p>
+              )}
             </CardHeader>
             <CardContent>
-              {monthly.length === 0 ? (
+              {windowed.length === 0 ? (
                 <p className="text-muted-foreground">No payment data yet.</p>
               ) : (
                 <ResponsiveContainer width="100%" height={280}>
-                  <BarChart data={monthly}>
+                  <BarChart data={windowed}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
+                    <XAxis dataKey="month" tickFormatter={monthLabel} />
                     <YAxis />
-                    <Tooltip formatter={(v) => formatCurrency(Number(v))} />
+                    <Tooltip
+                      labelFormatter={(l) => monthLabel(String(l))}
+                      formatter={(v) => formatCurrency(Number(v))}
+                    />
                     <Legend />
                     <Bar
                       dataKey="interest_collected"

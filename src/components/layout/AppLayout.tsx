@@ -52,8 +52,8 @@ export function AppLayout() {
     <div className="flex min-h-screen bg-background text-foreground">
       {/* Sidebar (desktop) */}
       <aside className="hidden w-56 shrink-0 flex-col border-r p-4 md:flex">
-        <div className="mb-6 flex items-center gap-2 px-1">
-          <img src="/logo.svg?v=8" alt="TrustFund" className="size-9" />
+        <div className="mb-6 flex items-center gap-3 px-1">
+          <img src="/logo.svg?v=8" alt="TrustFund" className="size-12" />
           <div>
             <h1 className="text-lg font-bold leading-tight">TrustFund</h1>
             <p className="text-xs text-muted-foreground">Lend &amp; recover</p>
@@ -66,6 +66,12 @@ export function AppLayout() {
 
       {/* Main content */}
       <div className="flex flex-1 flex-col">
+        {/* Compact logo header (mobile only) */}
+        <header className="flex items-center gap-2 border-b p-3 md:hidden">
+          <img src="/logo.svg?v=8" alt="TrustFund" className="size-8" />
+          <span className="text-base font-bold">TrustFund</span>
+        </header>
+
         <main className="flex-1 p-4 pb-20 md:pb-4">
           <Outlet />
         </main>
