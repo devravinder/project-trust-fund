@@ -97,7 +97,7 @@ export function PaymentDetailPage() {
           {p.note && (
             <div className="mt-2 border-t pt-2 text-sm">
               <p className="text-muted-foreground">Note</p>
-              <p className="italic">“{p.note}”</p>
+              <p className="font-bold">{p.note}</p>
             </div>
           )}
         </CardContent>

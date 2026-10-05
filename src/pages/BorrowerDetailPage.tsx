@@ -60,16 +60,28 @@ export function BorrowerDetailPage() {
 
       <div className="mb-4">
         <h1 className="text-2xl font-bold">{borrower.name}</h1>
-        <p className="text-sm text-muted-foreground">
-          {[borrower.phone, borrower.address].filter(Boolean).join(' · ') ||
-            'No contact details'}
-        </p>
-        {borrower.notes && (
-          <p className="mt-1 text-sm italic text-muted-foreground">
-            “{borrower.notes}”
-          </p>
-        )}
       </div>
+
+      <Card className="mb-4">
+        <CardContent className="grid gap-2 p-4 text-sm">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Phone</span>
+            <span className="font-medium">{borrower.phone || '—'}</span>
+          </div>
+          <div className="flex justify-between gap-4">
+            <span className="text-muted-foreground">Address</span>
+            <span className="text-right font-medium">
+              {borrower.address || '—'}
+            </span>
+          </div>
+          {borrower.notes && (
+            <div className="border-t pt-2">
+              <span className="text-muted-foreground">Notes</span>
+              <p className="mt-0.5 font-bold">{borrower.notes}</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card className="mb-6 max-w-sm">
         <CardContent className="p-4">

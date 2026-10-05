@@ -103,9 +103,7 @@ export function LoanDetailPage() {
             {formatDate(summary.start_date)}
           </p>
           {summary.note && (
-            <p className="mt-1 text-sm italic text-muted-foreground">
-              “{summary.note}”
-            </p>
+            <p className="mt-1 text-sm font-bold">{summary.note}</p>
           )}
         </div>
         <Button onClick={() => setPayOpen(true)}>
@@ -274,9 +272,7 @@ export function LoanDetailPage() {
                     </span>
                   </div>
                   {p.note && (
-                    <p className="mt-0.5 text-xs italic text-muted-foreground">
-                      “{p.note}”
-                    </p>
+                    <p className="mt-0.5 text-xs font-bold">{p.note}</p>
                   )}
                 </button>
               ))}
