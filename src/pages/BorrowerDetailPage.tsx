@@ -99,7 +99,11 @@ export function BorrowerDetailPage() {
             <Card
               key={l.id}
               className="cursor-pointer transition-colors hover:bg-accent"
-              onClick={() => navigate(`/loans/${l.id}`)}
+              onClick={() =>
+                navigate(`/loans/${l.id}`, {
+                  state: { from: `/borrowers/${id}` },
+                })
+              }
             >
               <CardContent className="flex items-center justify-between p-4">
                 <div>

@@ -100,7 +100,7 @@ export function LoansPage() {
             <Card
               key={l.id}
               className="cursor-pointer transition-colors hover:bg-accent"
-              onClick={() => navigate(`/loans/${l.id}`)}
+              onClick={() => navigate(`/loans/${l.id}`, { state: { from: '/loans' } })}
             >
               <CardContent className="p-4">
                 <div className="flex items-start justify-between">

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { ArrowLeft, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -25,6 +25,13 @@ import { PaymentFormDialog } from '@/features/payments/PaymentFormDialog'
 export function LoanDetailPage() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
+  // Where to go "back" to: the page we came from, else the loans list.
+  const from = (location.state as { from?: string } | null)?.from
+  const backTo = from ?? '/loans'
+  const backLabel = from && from.startsWith('/borrowers/')
+    ? 'Back to borrower'
+    : 'Back to loans'
   const [summary, setSummary] = useState<LoanSummary | null>(null)
   const [schedule, setSchedule] = useState<ScheduleItem[]>([])
   const [loanPayments, setLoanPayments] = useState<Payment[]>([])
@@ -88,9 +95,9 @@ export function LoanDetailPage() {
         variant="ghost"
         size="sm"
         className="mb-3"
-        onClick={() => navigate('/loans')}
+        onClick={() => navigate(backTo)}
       >
-        <ArrowLeft /> Back to loans
+        <ArrowLeft /> {backLabel}
       </Button>
 
       <div className="mb-4 flex items-start justify-between">
