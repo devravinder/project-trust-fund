@@ -109,6 +109,8 @@ export const loans = {
   setStatus: (id: string, status: LoanStatus) =>
     invoke<void>('loan_set_status', { id, status }),
   remove: (id: string) => invoke<void>('loan_delete', { id }),
+  removeWithRelated: (id: string) =>
+    invoke<void>('loan_delete_with_related', { id }),
   schedule: (id: string) => invoke<ScheduleItem[]>('loan_schedule', { id }),
 }
 

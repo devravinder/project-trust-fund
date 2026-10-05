@@ -200,6 +200,18 @@ pub fn soft_delete(d: &mut Dataset, id: &str) {
     }
 }
 
+/// Permanently remove a loan and all its related data (payments + schedule).
+/// Used by the explicit "delete loan & related data" action (confirmed in UI).
+pub fn delete_with_related(d: &mut Dataset, loan_id: &str) {
+    d.loans.retain(|l| l.id != loan_id);
+    d.payments.retain(|p| p.loan_id != loan_id);
+    d.schedule.retain(|s| s.loan_id != loan_id);
+    // Drop any soft-delete markers for rows that no longer exist.
+    d.deleted_loans.retain(|id| id != loan_id);
+    d.deleted_payments
+        .retain(|pid| d.payments.iter().any(|p| &p.id == pid));
+}
+
 pub fn schedule(d: &Dataset, loan_id: &str) -> Vec<ScheduleItem> {
     let mut rows: Vec<ScheduleItem> = d
         .schedule
@@ -315,5 +327,57 @@ mod tests {
         // 3 whole months -> 10000 * 0.02 * 3 = 600
         let as_of = NaiveDate::from_ymd_opt(2026, 4, 10).unwrap();
         assert_eq!(interest_accrued(&loan, as_of), 600.0);
+    }
+
+    #[test]
+    fn delete_with_related_removes_loan_payments_and_schedule() {
+        use crate::repo_payments;
+        let mut d = Dataset::default();
+        let b = repo_borrowers::create(
+            &mut d,
+            BorrowerInput {
+                name: "T".into(),
+                phone: None,
+                address: None,
+                photo_path: None,
+                notes: None,
+            },
+        );
+        let loan = create(
+            &mut d,
+            LoanInput {
+                borrower_id: b.id,
+                principal: 10_000.0,
+                monthly_rate: 0.02,
+                interest_type: "simple".into(),
+                repayment_mode: "installments".into(),
+                term_months: Some(5),
+                start_date: "2026-01-15".into(),
+                note: None,
+            },
+        )
+        .unwrap();
+        repo_payments::create(
+            &mut d,
+            crate::models::PaymentInput {
+                loan_id: loan.id.clone(),
+                amount: 1_000.0,
+                interest_component: None,
+                principal_component: None,
+                paid_date: "2026-02-15".into(),
+                note: None,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(d.loans.len(), 1);
+        assert!(!d.payments.is_empty());
+        assert!(!d.schedule.is_empty());
+
+        delete_with_related(&mut d, &loan.id);
+
+        assert!(d.loans.is_empty());
+        assert!(d.payments.iter().all(|p| p.loan_id != loan.id));
+        assert!(d.schedule.iter().all(|s| s.loan_id != loan.id));
     }
 }

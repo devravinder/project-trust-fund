@@ -1,9 +1,17 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Plus } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
 import { formatCurrency, formatDate, formatRate } from '@/lib/format'
 import { loans, payments as paymentsApi, type LoanSummary } from '@/lib/api'
 import type { LoanStatus, Payment, ScheduleItem } from '@/types'
@@ -17,6 +25,8 @@ export function LoanDetailPage() {
   const [loanPayments, setLoanPayments] = useState<Payment[]>([])
   const [loading, setLoading] = useState(true)
   const [payOpen, setPayOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -47,6 +57,20 @@ export function LoanDetailPage() {
       void load()
     } catch (e) {
       toast.error(String(e))
+    }
+  }
+
+  const handleDelete = async () => {
+    setDeleting(true)
+    try {
+      await loans.removeWithRelated(id)
+      toast.success('Loan and related data deleted')
+      setDeleteOpen(false)
+      navigate('/loans')
+    } catch (e) {
+      toast.error(String(e))
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -164,6 +188,13 @@ export function LoanDetailPage() {
             Reopen (active)
           </Button>
         )}
+        <Button
+          variant="destructive"
+          size="sm"
+          onClick={() => setDeleteOpen(true)}
+        >
+          <Trash2 /> Delete loan
+        </Button>
       </div>
 
       {schedule.length > 0 && (
@@ -241,6 +272,38 @@ export function LoanDetailPage() {
         onSaved={() => void load()}
         fixedLoanId={id}
       />
+
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete this loan?</DialogTitle>
+            <DialogDescription>
+              This permanently deletes the loan for{' '}
+              <span className="font-medium text-foreground">
+                {summary.borrower_name}
+              </span>{' '}
+              along with all its payments and installment schedule. This cannot
+              be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteOpen(false)}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={deleting}
+            >
+              {deleting ? 'Deleting…' : 'Delete loan'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

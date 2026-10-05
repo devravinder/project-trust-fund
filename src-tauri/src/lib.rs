@@ -356,6 +356,17 @@ async fn loan_delete(state: tauri::State<'_, StoreState>, id: String) -> Result<
         .map_err(|e| e.to_string())
 }
 
+/// Permanently delete a loan and all its related payments and schedule.
+#[tauri::command]
+async fn loan_delete_with_related(
+    state: tauri::State<'_, StoreState>,
+    id: String,
+) -> Result<(), String> {
+    data::write(&state, |d| repo_loans::delete_with_related(d, &id))
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 async fn loan_schedule(
     state: tauri::State<'_, StoreState>,
@@ -504,6 +515,7 @@ pub fn run() {
             loan_create,
             loan_set_status,
             loan_delete,
+            loan_delete_with_related,
             loan_schedule,
             payments_list,
             payments_for_loan,
