@@ -30,7 +30,7 @@ export interface Loan {
   monthly_rate: number
   interest_type: InterestType
   repayment_mode: RepaymentMode
-  term_months: number | null
+  end_date: string | null
   start_date: string
   status: LoanStatus
   note: string | null
@@ -44,7 +44,7 @@ export interface LoanInput {
   monthly_rate: number
   interest_type: InterestType
   repayment_mode: RepaymentMode
-  term_months?: number | null
+  end_date?: string | null
   start_date: string
   note?: string | null
 }

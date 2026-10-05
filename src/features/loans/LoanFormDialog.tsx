@@ -21,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Combobox } from '@/components/ui/combobox'
 import { borrowers as borrowersApi, loans } from '@/lib/api'
 import type { Borrower } from '@/types'
 
@@ -32,7 +33,7 @@ const schema = z.object({
     .min(0, 'Rate cannot be negative')
     .max(100, 'Rate too high'),
   repayment_mode: z.enum(['one_time', 'installments']),
-  term_months: z.coerce.number().int().min(0).optional(),
+  end_date: z.string().optional(),
   start_date: z.string().min(1, 'Start date is required'),
   note: z.string().optional(),
 })
@@ -65,7 +66,7 @@ export function LoanFormDialog({
       principal: 0,
       monthly_rate_pct: 0,
       repayment_mode: 'one_time',
-      term_months: 0,
+      end_date: '',
       start_date: today(),
       note: '',
     },
@@ -80,7 +81,7 @@ export function LoanFormDialog({
         principal: 0,
         monthly_rate_pct: 0,
         repayment_mode: 'one_time',
-        term_months: 0,
+        end_date: '',
         start_date: today(),
         note: '',
       })
@@ -92,9 +93,13 @@ export function LoanFormDialog({
   }, [open, reset])
 
   const onSubmit = async (values: FormValues) => {
-    const termNum = Number(values.term_months) || 0
-    if (values.repayment_mode === 'installments' && termNum < 1) {
-      toast.error('Installment loans need a term of at least 1 month')
+    const endDate = values.end_date?.trim() || ''
+    if (endDate && endDate <= values.start_date) {
+      toast.error('End date must be after the start date')
+      return
+    }
+    if (values.repayment_mode === 'installments' && !endDate) {
+      toast.error('Installment loans need an end date')
       return
     }
     try {
@@ -104,7 +109,7 @@ export function LoanFormDialog({
         monthly_rate: Number(values.monthly_rate_pct) / 100,
         interest_type: 'simple', // v1: simple only
         repayment_mode: values.repayment_mode,
-        term_months: termNum > 0 ? termNum : null,
+        end_date: endDate || null,
         start_date: values.start_date,
         note: values.note || null,
       })
@@ -129,18 +134,17 @@ export function LoanFormDialog({
               control={control}
               name="borrower_id"
               render={({ field }) => (
-                <Select value={field.value} onValueChange={field.onChange}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select borrower" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {borrowerList.map((b) => (
-                      <SelectItem key={b.id} value={b.id}>
-                        {b.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Combobox
+                  options={borrowerList.map((b) => ({
+                    value: b.id,
+                    label: b.name,
+                  }))}
+                  value={field.value}
+                  onChange={field.onChange}
+                  placeholder="Select borrower"
+                  searchPlaceholder="Search borrowers…"
+                  emptyText="No borrowers found"
+                />
               )}
             />
             {errors.borrower_id && (
@@ -173,7 +177,6 @@ export function LoanFormDialog({
                 step="0.01"
                 {...register('monthly_rate_pct')}
               />
-              <p className="text-xs text-muted-foreground">0 = no interest</p>
             </div>
           </div>
 
@@ -197,16 +200,16 @@ export function LoanFormDialog({
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="term">
-                Term (months){mode === 'one_time' ? ', optional' : ''}
-              </Label>
-              <Input id="term" type="number" {...register('term_months')} />
+              <Label htmlFor="start_date">Start date</Label>
+              <Input id="start_date" type="date" {...register('start_date')} />
             </div>
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="start_date">Start date</Label>
-            <Input id="start_date" type="date" {...register('start_date')} />
+            <Label htmlFor="end_date">
+              End date{mode === 'one_time' ? ', optional' : ''}
+            </Label>
+            <Input id="end_date" type="date" {...register('end_date')} />
           </div>
 
           <div className="grid gap-2">

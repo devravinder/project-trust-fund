@@ -42,6 +42,16 @@ export interface DueItem {
   status: string
 }
 
+export interface OverdueLoan {
+  loan_id: string
+  borrower_name: string
+  end_date: string
+  outstanding: number
+  interest_due: number
+  total_due: number
+  days_overdue: number
+}
+
 export interface MonthlyPoint {
   month: string
   interest_collected: number
@@ -129,6 +139,8 @@ export const payments = {
 export const dashboard = {
   summary: () => invoke<DashboardSummary>('dashboard_summary'),
   dues: (limit?: number) => invoke<DueItem[]>('dashboard_dues', { limit }),
+  overdue: (limit?: number) =>
+    invoke<OverdueLoan[]>('dashboard_overdue', { limit }),
 }
 
 // ---- Reports ----
