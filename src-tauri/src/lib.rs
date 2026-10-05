@@ -1,261 +1,293 @@
 mod credentials;
-mod db;
+mod data;
 mod export;
 mod interest;
-mod migrations;
 mod models;
 mod repo_borrowers;
 mod repo_loans;
 mod repo_payments;
 mod repo_reports;
 mod repo_stats;
+mod store;
+mod turso;
 mod util;
 
 use credentials::TursoCredentials;
-use db::DbState;
 use models::{Borrower, BorrowerInput, Loan, LoanInput, Payment, PaymentInput, ScheduleItem};
 use repo_loans::LoanSummary;
 use repo_payments::PaymentView;
 use repo_reports::{MonthlyPoint, PersonReport};
 use repo_stats::{DashboardSummary, DueItem};
+use store::StoreState;
 use tauri::Manager;
 
-fn app_local_db_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+fn json_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
     let dir = app
         .path()
         .app_data_dir()
         .map_err(|e| format!("app_data_dir: {e}"))?;
     std::fs::create_dir_all(&dir).map_err(|e| format!("create dir: {e}"))?;
-    Ok(dir.join("trustfund.db"))
+    Ok(dir.join("trustfund.json"))
 }
 
-/// Connect to a local-only database in the app data dir (dev/offline fallback).
+// ---- Connection ----
+
+/// Open the local JSON store (offline, no account).
 #[tauri::command]
 async fn db_connect_local(
     app: tauri::AppHandle,
-    state: tauri::State<'_, DbState>,
+    state: tauri::State<'_, StoreState>,
 ) -> Result<(), String> {
-    let path = app_local_db_path(&app)?;
-    state.open_local(&path).await.map_err(|e| e.to_string())
+    let path = json_path(&app)?;
+    state.open_json(path).await.map_err(|e| e.to_string())
 }
 
-/// Validate + connect using Turso credentials, then persist them on success.
+/// Connect to Turso. Persists credentials on success. Returns whether the local
+/// JSON file still has data (so the UI can offer to migrate it).
 #[tauri::command]
 async fn db_connect_turso(
     app: tauri::AppHandle,
-    state: tauri::State<'_, DbState>,
+    state: tauri::State<'_, StoreState>,
     sync_url: String,
     auth_token: String,
-) -> Result<(), String> {
-    let path = app_local_db_path(&app)?;
+) -> Result<bool, String> {
     state
-        .open_embedded_replica(&path, sync_url.clone(), auth_token.clone())
+        .open_turso(sync_url.clone(), auth_token.clone())
         .await
         .map_err(|e| e.to_string())?;
-    // Persist only after a successful connect.
     credentials::save(&app, &TursoCredentials { sync_url, auth_token })?;
-    Ok(())
+
+    // Does the local JSON file still hold data to migrate?
+    let path = json_path(&app)?;
+    let json = data::json_load(&path).map_err(|e| e.to_string())?;
+    Ok(!json.is_empty())
 }
 
-/// On startup: if credentials exist, connect with them; else report not-configured.
+/// On startup: connect to saved Turso creds if present, else local JSON.
+/// Returns "turso" or "local".
 #[tauri::command]
 async fn db_connect_saved(
     app: tauri::AppHandle,
-    state: tauri::State<'_, DbState>,
-) -> Result<bool, String> {
+    state: tauri::State<'_, StoreState>,
+) -> Result<String, String> {
     match credentials::load(&app)? {
         Some(creds) => {
-            let path = app_local_db_path(&app)?;
             state
-                .open_embedded_replica(&path, creds.sync_url, creds.auth_token)
+                .open_turso(creds.sync_url, creds.auth_token)
                 .await
                 .map_err(|e| e.to_string())?;
-            Ok(true)
+            Ok("turso".into())
         }
-        None => Ok(false),
+        None => {
+            let path = json_path(&app)?;
+            state.open_json(path).await.map_err(|e| e.to_string())?;
+            Ok("local".into())
+        }
     }
 }
 
-/// Whether credentials are stored.
 #[tauri::command]
 fn db_has_credentials(app: tauri::AppHandle) -> Result<bool, String> {
     Ok(credentials::load(&app)?.is_some())
 }
 
-/// Return stored credentials (for sharing as a QR code). Returns null if none.
 #[tauri::command]
 fn db_get_credentials(app: tauri::AppHandle) -> Result<Option<TursoCredentials>, String> {
     credentials::load(&app)
 }
 
-/// Forget credentials (disconnect on next launch).
+/// Disconnect from Turso: clear credentials and switch back to local JSON.
 #[tauri::command]
-fn db_clear_credentials(app: tauri::AppHandle) -> Result<(), String> {
-    credentials::clear(&app)
+async fn db_clear_credentials(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, StoreState>,
+) -> Result<(), String> {
+    credentials::clear(&app)?;
+    let path = json_path(&app)?;
+    state.open_json(path).await.map_err(|e| e.to_string())
 }
 
-/// Returns whether a database connection is currently open.
 #[tauri::command]
-async fn db_is_connected(state: tauri::State<'_, DbState>) -> Result<bool, String> {
+async fn db_is_connected(state: tauri::State<'_, StoreState>) -> Result<bool, String> {
     Ok(state.is_connected().await)
 }
 
-/// Dev helper: seed sample data (borrowers, loans, a payment). Safe to call
-/// multiple times — it just adds more sample rows.
 #[tauri::command]
-async fn dev_seed(state: tauri::State<'_, DbState>) -> Result<(), String> {
-    let conn = state.conn().await.map_err(|e| e.to_string())?;
+async fn db_is_remote(state: tauri::State<'_, StoreState>) -> Result<bool, String> {
+    Ok(state.is_remote().await)
+}
 
-    let ramesh = repo_borrowers::create(
-        &conn,
-        BorrowerInput {
-            name: "Ramesh Kumar".into(),
-            phone: Some("9876543210".into()),
-            address: Some("Bengaluru".into()),
-            photo_path: None,
-            notes: None,
-        },
-    )
-    .await
-    .map_err(|e| e.to_string())?;
+// ---- JSON -> Turso migration ----
 
-    let asha = repo_borrowers::create(
-        &conn,
-        BorrowerInput {
-            name: "Asha Verma".into(),
-            phone: Some("9123456780".into()),
-            address: None,
-            photo_path: None,
-            notes: None,
-        },
-    )
-    .await
-    .map_err(|e| e.to_string())?;
-
-    let loan1 = repo_loans::create(
-        &conn,
-        LoanInput {
-            borrower_id: ramesh.id,
-            principal: 10_000.0,
-            monthly_rate: 0.02,
-            interest_type: "simple".into(),
-            repayment_mode: "installments".into(),
-            term_months: Some(5),
-            start_date: "2026-01-15".into(),
-            note: Some("Sample installment loan".into()),
-        },
-    )
-    .await
-    .map_err(|e| e.to_string())?;
-
-    repo_loans::create(
-        &conn,
-        LoanInput {
-            borrower_id: asha.id,
-            principal: 5_000.0,
-            monthly_rate: 0.0,
-            interest_type: "simple".into(),
-            repayment_mode: "one_time".into(),
-            term_months: Some(6),
-            start_date: "2026-02-01".into(),
-            note: Some("Zero-interest, friend".into()),
-        },
-    )
-    .await
-    .map_err(|e| e.to_string())?;
-
-    repo_payments::create(
-        &conn,
-        PaymentInput {
-            loan_id: loan1.id.clone(),
-            amount: 2_200.0,
-            interest_component: None,
-            principal_component: None,
-            paid_date: "2026-02-15".into(),
-            note: None,
-        },
-    )
-    .await
-    .map_err(|e| e.to_string())?;
-    let _ = repo_loans::refresh_schedule_status(&conn, &loan1.id).await;
-
+/// Push all local JSON data into the (currently connected) Turso store, then
+/// delete the local JSON file.
+#[tauri::command]
+async fn migrate_json_to_turso(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, StoreState>,
+) -> Result<(), String> {
+    if !state.is_remote().await {
+        return Err("not connected to Turso".into());
+    }
+    let path = json_path(&app)?;
+    let json = data::json_load(&path).map_err(|e| e.to_string())?;
+    if !json.is_empty() {
+        // Merge the JSON dataset into Turso via the write runner.
+        data::write(&state, move |d| {
+            d.borrowers.extend(json.borrowers.clone());
+            d.loans.extend(json.loans.clone());
+            d.payments.extend(json.payments.clone());
+            d.schedule.extend(json.schedule.clone());
+            d.deleted_borrowers.extend(json.deleted_borrowers.clone());
+            d.deleted_loans.extend(json.deleted_loans.clone());
+            d.deleted_payments.extend(json.deleted_payments.clone());
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+    }
+    // Remove the local file after a successful migration.
+    let _ = std::fs::remove_file(&path);
     Ok(())
 }
 
-/// Trigger a manual sync with the remote (no-op for local-only).
+/// Discard the local JSON file (user chose not to migrate).
 #[tauri::command]
-async fn db_sync(state: tauri::State<'_, DbState>) -> Result<(), String> {
-    state.sync().await.map_err(|e| e.to_string())
+fn delete_local_json(app: tauri::AppHandle) -> Result<(), String> {
+    let path = json_path(&app)?;
+    if path.exists() {
+        std::fs::remove_file(&path).map_err(|e| format!("delete failed: {e}"))?;
+    }
+    Ok(())
+}
+
+// ---- Dev seed ----
+
+#[tauri::command]
+async fn dev_seed(state: tauri::State<'_, StoreState>) -> Result<(), String> {
+    data::write(&state, |d| {
+        let ramesh = repo_borrowers::create(
+            d,
+            BorrowerInput {
+                name: "Ramesh Kumar".into(),
+                phone: Some("9876543210".into()),
+                address: Some("Bengaluru".into()),
+                photo_path: None,
+                notes: None,
+            },
+        );
+        let asha = repo_borrowers::create(
+            d,
+            BorrowerInput {
+                name: "Asha Verma".into(),
+                phone: Some("9123456780".into()),
+                address: None,
+                photo_path: None,
+                notes: None,
+            },
+        );
+        if let Ok(loan1) = repo_loans::create(
+            d,
+            LoanInput {
+                borrower_id: ramesh.id,
+                principal: 10_000.0,
+                monthly_rate: 0.02,
+                interest_type: "simple".into(),
+                repayment_mode: "installments".into(),
+                term_months: Some(5),
+                start_date: "2026-01-15".into(),
+                note: Some("Sample installment loan".into()),
+            },
+        ) {
+            let _ = repo_payments::create(
+                d,
+                PaymentInput {
+                    loan_id: loan1.id,
+                    amount: 2_200.0,
+                    interest_component: None,
+                    principal_component: None,
+                    paid_date: "2026-02-15".into(),
+                    note: None,
+                },
+            );
+        }
+        let _ = repo_loans::create(
+            d,
+            LoanInput {
+                borrower_id: asha.id,
+                principal: 5_000.0,
+                monthly_rate: 0.0,
+                interest_type: "simple".into(),
+                repayment_mode: "one_time".into(),
+                term_months: Some(6),
+                start_date: "2026-02-01".into(),
+                note: Some("Zero-interest, friend".into()),
+            },
+        );
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 // ---- Borrowers ----
 
 #[tauri::command]
 async fn borrowers_list(
-    state: tauri::State<'_, DbState>,
+    state: tauri::State<'_, StoreState>,
     search: Option<String>,
 ) -> Result<Vec<Borrower>, String> {
-    let conn = state.conn().await.map_err(|e| e.to_string())?;
-    repo_borrowers::list(&conn, search)
+    data::read(&state, |d| repo_borrowers::list(d, search.as_deref()))
         .await
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 async fn borrower_get(
-    state: tauri::State<'_, DbState>,
+    state: tauri::State<'_, StoreState>,
     id: String,
 ) -> Result<Option<Borrower>, String> {
-    let conn = state.conn().await.map_err(|e| e.to_string())?;
-    repo_borrowers::get(&conn, &id)
+    data::read(&state, |d| repo_borrowers::get(d, &id))
         .await
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 async fn borrower_create(
-    state: tauri::State<'_, DbState>,
+    state: tauri::State<'_, StoreState>,
     input: BorrowerInput,
 ) -> Result<Borrower, String> {
-    let conn = state.conn().await.map_err(|e| e.to_string())?;
-    let result = repo_borrowers::create(&conn, input)
+    data::write(&state, |d| repo_borrowers::create(d, input))
         .await
-        .map_err(|e| e.to_string())?;
-    let _ = state.sync().await;
-    Ok(result)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 async fn borrower_update(
-    state: tauri::State<'_, DbState>,
+    state: tauri::State<'_, StoreState>,
     id: String,
     input: BorrowerInput,
 ) -> Result<Borrower, String> {
-    let conn = state.conn().await.map_err(|e| e.to_string())?;
-    let result = repo_borrowers::update(&conn, &id, input)
+    data::write(&state, |d| repo_borrowers::update(d, &id, input))
         .await
-        .map_err(|e| e.to_string())?;
-    let _ = state.sync().await;
-    Ok(result)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "borrower not found".into())
 }
 
 #[tauri::command]
-async fn borrower_delete(state: tauri::State<'_, DbState>, id: String) -> Result<(), String> {
-    let conn = state.conn().await.map_err(|e| e.to_string())?;
-    repo_borrowers::soft_delete(&conn, &id)
+async fn borrower_delete(
+    state: tauri::State<'_, StoreState>,
+    id: String,
+) -> Result<(), String> {
+    data::write(&state, |d| repo_borrowers::soft_delete(d, &id))
         .await
-        .map_err(|e| e.to_string())?;
-    let _ = state.sync().await;
-    Ok(())
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 async fn borrower_total_outstanding(
-    state: tauri::State<'_, DbState>,
+    state: tauri::State<'_, StoreState>,
     id: String,
 ) -> Result<f64, String> {
-    let conn = state.conn().await.map_err(|e| e.to_string())?;
-    repo_borrowers::total_outstanding(&conn, &id)
+    data::read(&state, |d| repo_borrowers::total_outstanding(d, &id))
         .await
         .map_err(|e| e.to_string())
 }
@@ -264,77 +296,72 @@ async fn borrower_total_outstanding(
 
 #[tauri::command]
 async fn loans_list(
-    state: tauri::State<'_, DbState>,
+    state: tauri::State<'_, StoreState>,
     status: Option<String>,
     search: Option<String>,
 ) -> Result<Vec<LoanSummary>, String> {
-    let conn = state.conn().await.map_err(|e| e.to_string())?;
-    repo_loans::list(&conn, status, search)
+    data::read(&state, |d| {
+        repo_loans::list(d, status.as_deref(), search.as_deref())
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn loan_get(
+    state: tauri::State<'_, StoreState>,
+    id: String,
+) -> Result<Option<Loan>, String> {
+    data::read(&state, |d| repo_loans::get(d, &id))
         .await
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn loan_get(state: tauri::State<'_, DbState>, id: String) -> Result<Option<Loan>, String> {
-    let conn = state.conn().await.map_err(|e| e.to_string())?;
-    repo_loans::get(&conn, &id).await.map_err(|e| e.to_string())
-}
-
-#[tauri::command]
 async fn loan_summary(
-    state: tauri::State<'_, DbState>,
+    state: tauri::State<'_, StoreState>,
     id: String,
 ) -> Result<Option<LoanSummary>, String> {
-    let conn = state.conn().await.map_err(|e| e.to_string())?;
-    repo_loans::get_summary(&conn, &id)
+    data::read(&state, |d| repo_loans::get_summary(d, &id))
         .await
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 async fn loan_create(
-    state: tauri::State<'_, DbState>,
+    state: tauri::State<'_, StoreState>,
     input: LoanInput,
 ) -> Result<Loan, String> {
-    let conn = state.conn().await.map_err(|e| e.to_string())?;
-    let result = repo_loans::create(&conn, input)
+    data::write(&state, |d| repo_loans::create(d, input))
         .await
-        .map_err(|e| e.to_string())?;
-    let _ = state.sync().await;
-    Ok(result)
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e)
 }
 
 #[tauri::command]
 async fn loan_set_status(
-    state: tauri::State<'_, DbState>,
+    state: tauri::State<'_, StoreState>,
     id: String,
     status: String,
 ) -> Result<(), String> {
-    let conn = state.conn().await.map_err(|e| e.to_string())?;
-    repo_loans::set_status(&conn, &id, &status)
+    data::write(&state, |d| repo_loans::set_status(d, &id, &status))
         .await
-        .map_err(|e| e.to_string())?;
-    let _ = state.sync().await;
-    Ok(())
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn loan_delete(state: tauri::State<'_, DbState>, id: String) -> Result<(), String> {
-    let conn = state.conn().await.map_err(|e| e.to_string())?;
-    repo_loans::soft_delete(&conn, &id)
+async fn loan_delete(state: tauri::State<'_, StoreState>, id: String) -> Result<(), String> {
+    data::write(&state, |d| repo_loans::soft_delete(d, &id))
         .await
-        .map_err(|e| e.to_string())?;
-    let _ = state.sync().await;
-    Ok(())
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 async fn loan_schedule(
-    state: tauri::State<'_, DbState>,
+    state: tauri::State<'_, StoreState>,
     id: String,
 ) -> Result<Vec<ScheduleItem>, String> {
-    let conn = state.conn().await.map_err(|e| e.to_string())?;
-    repo_loans::schedule(&conn, &id)
+    data::read(&state, |d| repo_loans::schedule(d, &id))
         .await
         .map_err(|e| e.to_string())
 }
@@ -343,74 +370,60 @@ async fn loan_schedule(
 
 #[tauri::command]
 async fn payments_list(
-    state: tauri::State<'_, DbState>,
+    state: tauri::State<'_, StoreState>,
     search: Option<String>,
 ) -> Result<Vec<PaymentView>, String> {
-    let conn = state.conn().await.map_err(|e| e.to_string())?;
-    repo_payments::list(&conn, search)
+    data::read(&state, |d| repo_payments::list(d, search.as_deref()))
         .await
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 async fn payments_for_loan(
-    state: tauri::State<'_, DbState>,
+    state: tauri::State<'_, StoreState>,
     loan_id: String,
 ) -> Result<Vec<Payment>, String> {
-    let conn = state.conn().await.map_err(|e| e.to_string())?;
-    repo_payments::list_for_loan(&conn, &loan_id)
+    data::read(&state, |d| repo_payments::list_for_loan(d, &loan_id))
         .await
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 async fn payment_create(
-    state: tauri::State<'_, DbState>,
+    state: tauri::State<'_, StoreState>,
     input: PaymentInput,
 ) -> Result<Payment, String> {
-    let conn = state.conn().await.map_err(|e| e.to_string())?;
-    let result = repo_payments::create(&conn, input)
+    data::write(&state, |d| repo_payments::create(d, input))
         .await
-        .map_err(|e| e.to_string())?;
-    let _ = repo_loans::refresh_schedule_status(&conn, &result.loan_id).await;
-    let _ = state.sync().await;
-    Ok(result)
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e)
 }
 
 #[tauri::command]
-async fn payment_delete(state: tauri::State<'_, DbState>, id: String) -> Result<(), String> {
-    let conn = state.conn().await.map_err(|e| e.to_string())?;
-    // Capture loan_id before delete so we can refresh its schedule.
-    let loan_id = repo_payments::loan_id_of(&conn, &id)
+async fn payment_delete(state: tauri::State<'_, StoreState>, id: String) -> Result<(), String> {
+    data::write(&state, |d| repo_payments::soft_delete(d, &id))
         .await
-        .map_err(|e| e.to_string())?;
-    repo_payments::soft_delete(&conn, &id)
-        .await
-        .map_err(|e| e.to_string())?;
-    if let Some(lid) = loan_id {
-        let _ = repo_loans::refresh_schedule_status(&conn, &lid).await;
-    }
-    let _ = state.sync().await;
-    Ok(())
+        .map_err(|e| e.to_string())
 }
 
 // ---- Dashboard ----
 
 #[tauri::command]
 async fn dashboard_summary(
-    state: tauri::State<'_, DbState>,
+    state: tauri::State<'_, StoreState>,
 ) -> Result<DashboardSummary, String> {
-    let conn = state.conn().await.map_err(|e| e.to_string())?;
-    repo_stats::summary(&conn).await.map_err(|e| e.to_string())
+    data::read(&state, repo_stats::summary)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 async fn dashboard_dues(
-    state: tauri::State<'_, DbState>,
+    state: tauri::State<'_, StoreState>,
     limit: Option<i64>,
 ) -> Result<Vec<DueItem>, String> {
-    let conn = state.conn().await.map_err(|e| e.to_string())?;
-    repo_stats::dues_this_month(&conn, limit.unwrap_or(5))
+    let lim = limit.unwrap_or(5) as usize;
+    data::read(&state, move |d| repo_stats::dues_this_month(d, lim))
         .await
         .map_err(|e| e.to_string())
 }
@@ -419,18 +432,18 @@ async fn dashboard_dues(
 
 #[tauri::command]
 async fn report_monthly(
-    state: tauri::State<'_, DbState>,
+    state: tauri::State<'_, StoreState>,
 ) -> Result<Vec<MonthlyPoint>, String> {
-    let conn = state.conn().await.map_err(|e| e.to_string())?;
-    repo_reports::monthly(&conn).await.map_err(|e| e.to_string())
+    data::read(&state, repo_reports::monthly)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 async fn report_by_person(
-    state: tauri::State<'_, DbState>,
+    state: tauri::State<'_, StoreState>,
 ) -> Result<Vec<PersonReport>, String> {
-    let conn = state.conn().await.map_err(|e| e.to_string())?;
-    repo_reports::by_person(&conn)
+    data::read(&state, repo_reports::by_person)
         .await
         .map_err(|e| e.to_string())
 }
@@ -439,24 +452,24 @@ async fn report_by_person(
 
 #[tauri::command]
 async fn export_csv(
-    state: tauri::State<'_, DbState>,
+    state: tauri::State<'_, StoreState>,
     table: String,
 ) -> Result<String, String> {
-    let conn = state.conn().await.map_err(|e| e.to_string())?;
-    let result = match table.as_str() {
-        "borrowers" => export::borrowers_csv(&conn).await,
-        "loans" => export::loans_csv(&conn).await,
-        "payments" => export::payments_csv(&conn).await,
-        other => return Err(format!("unknown table: {other}")),
-    };
-    result.map_err(|e| e.to_string())
+    data::read(&state, move |d| match table.as_str() {
+        "borrowers" => Ok(export::borrowers_csv(d)),
+        "loans" => Ok(export::loans_csv(d)),
+        "payments" => Ok(export::payments_csv(d)),
+        other => Err(format!("unknown table: {other}")),
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_store::Builder::default().build())
-        .manage(DbState::default())
+        .manage(StoreState::default())
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -475,7 +488,9 @@ pub fn run() {
             db_get_credentials,
             db_clear_credentials,
             db_is_connected,
-            db_sync,
+            db_is_remote,
+            migrate_json_to_turso,
+            delete_local_json,
             dev_seed,
             borrowers_list,
             borrower_get,

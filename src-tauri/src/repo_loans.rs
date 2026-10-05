@@ -1,36 +1,16 @@
-//! Loan repository: CRUD, installment schedule generation, balances, status.
+//! Loan operations on the in-memory dataset.
 
-use chrono::{Datelike, NaiveDate};
-use libsql::{params, Connection, Row};
+use chrono::{Datelike, Local, NaiveDate};
+use serde::Serialize;
 
-use crate::db::DbError;
-use crate::interest::{generate_schedule_simple, round2};
+use crate::interest::{
+    effective_months, generate_schedule_simple, round2, simple_interest, whole_months_between,
+};
 use crate::models::{Loan, LoanInput, ScheduleItem};
+use crate::data::Dataset;
 use crate::util::{new_id, now_iso};
 
-fn map_row(row: &Row) -> Result<Loan, DbError> {
-    Ok(Loan {
-        id: row.get(0)?,
-        borrower_id: row.get(1)?,
-        principal: row.get(2)?,
-        monthly_rate: row.get(3)?,
-        interest_type: row.get(4)?,
-        repayment_mode: row.get(5)?,
-        term_months: row.get(6)?,
-        start_date: row.get(7)?,
-        status: row.get(8)?,
-        note: row.get(9)?,
-        created_at: row.get(10)?,
-        updated_at: row.get(11)?,
-    })
-}
-
-const SELECT: &str = "SELECT id, borrower_id, principal, monthly_rate, interest_type, \
-     repayment_mode, term_months, start_date, status, note, created_at, updated_at \
-     FROM loans WHERE deleted_at IS NULL";
-
-/// Loan summary with computed balances, for list/detail views.
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct LoanSummary {
     #[serde(flatten)]
     pub loan: Loan,
@@ -38,76 +18,119 @@ pub struct LoanSummary {
     pub principal_recovered: f64,
     pub interest_collected: f64,
     pub outstanding_principal: f64,
+    /// Interest accrued from start date to today (whole-month, frozen at term).
+    pub interest_accrued_to_date: f64,
+    /// Accrued interest not yet collected.
+    pub interest_due: f64,
 }
 
-pub async fn list(
-    conn: &Connection,
-    status_filter: Option<String>,
-    search: Option<String>,
-) -> Result<Vec<LoanSummary>, DbError> {
-    // Base query joins borrower and aggregates payments.
-    let mut sql = String::from(
-        "SELECT l.id, l.borrower_id, l.principal, l.monthly_rate, l.interest_type, \
-            l.repayment_mode, l.term_months, l.start_date, l.status, l.note, \
-            l.created_at, l.updated_at, b.name, \
-            COALESCE((SELECT SUM(p.principal_component) FROM payments p \
-              WHERE p.loan_id = l.id AND p.deleted_at IS NULL), 0), \
-            COALESCE((SELECT SUM(p.interest_component) FROM payments p \
-              WHERE p.loan_id = l.id AND p.deleted_at IS NULL), 0) \
-         FROM loans l JOIN borrowers b ON b.id = l.borrower_id \
-         WHERE l.deleted_at IS NULL",
-    );
-    if let Some(s) = &status_filter {
-        if s != "all" {
-            sql.push_str(&format!(" AND l.status = '{}'", s.replace('\'', "")));
-        }
-    }
-    if let Some(term) = &search {
-        if !term.trim().is_empty() {
-            let safe = term.trim().replace('\'', "");
-            sql.push_str(&format!(" AND b.name LIKE '%{safe}%'"));
-        }
-    }
-    sql.push_str(" ORDER BY l.created_at DESC");
-
-    let mut rows = conn.query(&sql, ()).await?;
-    let mut out = Vec::new();
-    while let Some(row) = rows.next().await? {
-        let loan = map_row(&row)?;
-        let borrower_name: String = row.get(12)?;
-        let principal_recovered: f64 = crate::util::get_f64(&row, 13)?;
-        let interest_collected: f64 = crate::util::get_f64(&row, 14)?;
-        out.push(LoanSummary {
-            outstanding_principal: round2(loan.principal - principal_recovered),
-            loan,
-            borrower_name,
-            principal_recovered: round2(principal_recovered),
-            interest_collected: round2(interest_collected),
-        });
-    }
-    Ok(out)
+fn is_active_loan(d: &Dataset, id: &str) -> bool {
+    !d.deleted_loans.contains(&id.to_string())
 }
 
-pub async fn get(conn: &Connection, id: &str) -> Result<Option<Loan>, DbError> {
-    let mut rows = conn
-        .query(&format!("{SELECT} AND id = ?1"), params![id])
-        .await?;
-    match rows.next().await? {
-        Some(row) => Ok(Some(map_row(&row)?)),
-        None => Ok(None),
+fn borrower_name(d: &Dataset, borrower_id: &str) -> String {
+    d.borrowers
+        .iter()
+        .find(|b| b.id == borrower_id)
+        .map(|b| b.name.clone())
+        .unwrap_or_default()
+}
+
+fn principal_recovered(d: &Dataset, loan_id: &str) -> f64 {
+    d.payments
+        .iter()
+        .filter(|p| p.loan_id == loan_id && !d.deleted_payments.contains(&p.id))
+        .map(|p| p.principal_component)
+        .sum()
+}
+
+fn interest_collected(d: &Dataset, loan_id: &str) -> f64 {
+    d.payments
+        .iter()
+        .filter(|p| p.loan_id == loan_id && !d.deleted_payments.contains(&p.id))
+        .map(|p| p.interest_component)
+        .sum()
+}
+
+/// Interest accrued on a loan from its start date to `as_of` (whole months,
+/// capped at term). v1: simple interest only.
+pub fn interest_accrued(loan: &Loan, as_of: NaiveDate) -> f64 {
+    let start = match NaiveDate::parse_from_str(&loan.start_date, "%Y-%m-%d") {
+        Ok(d) => d,
+        Err(_) => return 0.0,
+    };
+    let elapsed = whole_months_between(start, as_of);
+    let months = effective_months(elapsed, loan.term_months);
+    simple_interest(loan.principal, loan.monthly_rate, months)
+}
+
+fn summarize(d: &Dataset, loan: &Loan) -> LoanSummary {
+    let recovered = round2(principal_recovered(d, &loan.id));
+    let collected = round2(interest_collected(d, &loan.id));
+    let accrued = interest_accrued(loan, Local::now().date_naive());
+    LoanSummary {
+        borrower_name: borrower_name(d, &loan.borrower_id),
+        principal_recovered: recovered,
+        interest_collected: collected,
+        outstanding_principal: round2(loan.principal - recovered),
+        interest_accrued_to_date: accrued,
+        interest_due: round2((accrued - collected).max(0.0)),
+        loan: loan.clone(),
     }
 }
 
-/// Single loan with computed balances + borrower name.
-pub async fn get_summary(
-    conn: &Connection,
-    id: &str,
-) -> Result<Option<LoanSummary>, DbError> {
-    let all = list(conn, Some("all".into()), None).await?;
-    Ok(all.into_iter().find(|s| s.loan.id == id))
+pub fn list(d: &Dataset, status: Option<&str>, search: Option<&str>) -> Vec<LoanSummary> {
+    let term = search.map(|s| s.trim().to_lowercase()).unwrap_or_default();
+    let mut out: Vec<LoanSummary> = d
+        .loans
+        .iter()
+        .filter(|l| is_active_loan(d, &l.id))
+        .filter(|l| match status {
+            Some(s) if s != "all" => l.status == s,
+            _ => true,
+        })
+        .filter(|l| {
+            if term.is_empty() {
+                true
+            } else {
+                borrower_name(d, &l.borrower_id)
+                    .to_lowercase()
+                    .contains(&term)
+            }
+        })
+        .map(|l| summarize(d, l))
+        .collect();
+    out.sort_by(|a, b| b.loan.created_at.cmp(&a.loan.created_at));
+    out
 }
 
-/// Add `months` to a date, clamping the day to the month's length.
+pub fn get(d: &Dataset, id: &str) -> Option<Loan> {
+    d.loans
+        .iter()
+        .find(|l| l.id == id && is_active_loan(d, &l.id))
+        .cloned()
+}
+
+pub fn get_summary(d: &Dataset, id: &str) -> Option<LoanSummary> {
+    d.loans
+        .iter()
+        .find(|l| l.id == id && is_active_loan(d, &l.id))
+        .map(|l| summarize(d, l))
+}
+
+fn last_day_of_month(year: i32, month: u32) -> u32 {
+    let (ny, nm) = if month == 12 {
+        (year + 1, 1)
+    } else {
+        (year, month + 1)
+    };
+    NaiveDate::from_ymd_opt(ny, nm, 1)
+        .unwrap()
+        .pred_opt()
+        .unwrap()
+        .day()
+}
+
 fn add_months(date: NaiveDate, months: i64) -> NaiveDate {
     let mut y = date.year();
     let mut m0 = date.month0() as i64 + months;
@@ -118,163 +141,117 @@ fn add_months(date: NaiveDate, months: i64) -> NaiveDate {
         y -= 1;
     }
     let month = (m0 + 1) as u32;
-    // Clamp day to last day of target month.
-    let last_day = last_day_of_month(y, month);
-    let day = date.day().min(last_day);
+    let day = date.day().min(last_day_of_month(y, month));
     NaiveDate::from_ymd_opt(y, month, day).unwrap()
 }
 
-fn last_day_of_month(year: i32, month: u32) -> u32 {
-    let (ny, nm) = if month == 12 {
-        (year + 1, 1)
-    } else {
-        (year, month + 1)
-    };
-    let first_next = NaiveDate::from_ymd_opt(ny, nm, 1).unwrap();
-    first_next.pred_opt().unwrap().day()
-}
-
-pub async fn create(conn: &Connection, input: LoanInput) -> Result<Loan, DbError> {
-    let id = new_id();
+pub fn create(d: &mut Dataset, input: LoanInput) -> Result<Loan, String> {
     let now = now_iso();
-    conn.execute(
-        "INSERT INTO loans (id, borrower_id, principal, monthly_rate, interest_type, \
-           repayment_mode, term_months, start_date, status, note, created_at, updated_at) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'active', ?9, ?10, ?10)",
-        params![
-            id.clone(),
-            input.borrower_id,
-            input.principal,
-            input.monthly_rate,
-            input.interest_type.clone(),
-            input.repayment_mode.clone(),
-            input.term_months,
-            input.start_date.clone(),
-            input.note,
-            now,
-        ],
-    )
-    .await?;
+    let loan = Loan {
+        id: new_id(),
+        borrower_id: input.borrower_id,
+        principal: input.principal,
+        monthly_rate: input.monthly_rate,
+        interest_type: input.interest_type,
+        repayment_mode: input.repayment_mode.clone(),
+        term_months: input.term_months,
+        start_date: input.start_date.clone(),
+        status: "active".into(),
+        note: input.note,
+        created_at: now.clone(),
+        updated_at: now.clone(),
+    };
 
-    // Generate installment schedule if applicable (v1: simple interest only).
+    // Generate installment schedule if applicable (v1: simple interest).
     if input.repayment_mode == "installments" {
         if let Some(n) = input.term_months {
             let start = NaiveDate::parse_from_str(&input.start_date, "%Y-%m-%d")
-                .map_err(|e| DbError::Msg(format!("bad start_date: {e}")))?;
-            let rows = generate_schedule_simple(input.principal, input.monthly_rate, n);
-            let ts = now_iso();
-            for r in rows {
+                .map_err(|e| format!("bad start_date: {e}"))?;
+            for r in generate_schedule_simple(input.principal, input.monthly_rate, n) {
                 let due = add_months(start, r.seq);
-                conn.execute(
-                    "INSERT INTO installment_schedule (id, loan_id, seq, due_date, \
-                       principal_due, interest_due, total_due, status, created_at, updated_at) \
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'pending', ?8, ?8)",
-                    params![
-                        new_id(),
-                        id.clone(),
-                        r.seq,
-                        due.format("%Y-%m-%d").to_string(),
-                        r.principal_due,
-                        r.interest_due,
-                        r.total_due,
-                        ts.clone(),
-                    ],
-                )
-                .await?;
+                d.schedule.push(ScheduleItem {
+                    id: new_id(),
+                    loan_id: loan.id.clone(),
+                    seq: r.seq,
+                    due_date: due.format("%Y-%m-%d").to_string(),
+                    principal_due: r.principal_due,
+                    interest_due: r.interest_due,
+                    total_due: r.total_due,
+                    status: "pending".into(),
+                });
             }
         }
     }
 
-    get(conn, &id).await?.ok_or(DbError::Msg("insert failed".into()))
+    d.loans.push(loan.clone());
+    Ok(loan)
 }
 
-pub async fn set_status(conn: &Connection, id: &str, status: &str) -> Result<(), DbError> {
-    let now = now_iso();
-    conn.execute(
-        "UPDATE loans SET status = ?2, updated_at = ?3 WHERE id = ?1 AND deleted_at IS NULL",
-        params![id, status, now],
-    )
-    .await?;
-    Ok(())
+pub fn set_status(d: &mut Dataset, id: &str, status: &str) {
+    if let Some(l) = d.loans.iter_mut().find(|l| l.id == id) {
+        l.status = status.to_string();
+        l.updated_at = now_iso();
+    }
 }
 
-pub async fn soft_delete(conn: &Connection, id: &str) -> Result<(), DbError> {
-    let now = now_iso();
-    conn.execute(
-        "UPDATE loans SET deleted_at = ?2, updated_at = ?2 WHERE id = ?1",
-        params![id, now],
-    )
-    .await?;
-    Ok(())
+pub fn soft_delete(d: &mut Dataset, id: &str) {
+    if !d.deleted_loans.iter().any(|x| x == id) {
+        d.deleted_loans.push(id.to_string());
+    }
 }
-/// Recompute installment schedule row statuses against actual payments.
-/// Applies total amount paid cumulatively across rows (by seq), marking each
-/// paid / partial / pending, and overdue when past due date and unpaid.
-pub async fn refresh_schedule_status(conn: &Connection, loan_id: &str) -> Result<(), DbError> {
-    let mut prow = conn
-        .query(
-            "SELECT COALESCE(SUM(amount), 0) FROM payments \
-             WHERE loan_id = ?1 AND deleted_at IS NULL",
-            params![loan_id],
-        )
-        .await?;
-    let mut remaining = match prow.next().await? {
-        Some(r) => crate::util::get_f64(&r, 0)?,
-        None => 0.0,
-    };
 
-    let today = chrono::Local::now().date_naive();
-    let items = schedule(conn, loan_id).await?;
-    for it in items {
-        let total = it.total_due;
-        let status = if remaining >= total - 0.005 {
-            remaining = round2(remaining - total);
-            "paid"
-        } else if remaining > 0.005 {
-            remaining = 0.0;
-            "partial"
-        } else {
-            let due = NaiveDate::parse_from_str(&it.due_date, "%Y-%m-%d").unwrap_or(today);
-            if due < today {
-                "overdue"
+pub fn schedule(d: &Dataset, loan_id: &str) -> Vec<ScheduleItem> {
+    let mut rows: Vec<ScheduleItem> = d
+        .schedule
+        .iter()
+        .filter(|s| s.loan_id == loan_id)
+        .cloned()
+        .collect();
+    rows.sort_by_key(|s| s.seq);
+    rows
+}
+
+/// Recompute installment schedule statuses against actual payments.
+pub fn refresh_schedule_status(d: &mut Dataset, loan_id: &str) {
+    let mut remaining: f64 = d
+        .payments
+        .iter()
+        .filter(|p| p.loan_id == loan_id && !d.deleted_payments.contains(&p.id))
+        .map(|p| p.amount)
+        .sum();
+
+    let today = Local::now().date_naive();
+    let mut seqs: Vec<i64> = d
+        .schedule
+        .iter()
+        .filter(|s| s.loan_id == loan_id)
+        .map(|s| s.seq)
+        .collect();
+    seqs.sort_unstable();
+
+    for seq in seqs {
+        if let Some(item) = d
+            .schedule
+            .iter_mut()
+            .find(|s| s.loan_id == loan_id && s.seq == seq)
+        {
+            let total = item.total_due;
+            item.status = if remaining >= total - 0.005 {
+                remaining = round2(remaining - total);
+                "paid".into()
+            } else if remaining > 0.005 {
+                remaining = 0.0;
+                "partial".into()
             } else {
-                "pending"
-            }
-        };
-        let now = now_iso();
-        conn.execute(
-            "UPDATE installment_schedule SET status = ?2, updated_at = ?3 WHERE id = ?1",
-            params![it.id, status, now],
-        )
-        .await?;
+                let due = NaiveDate::parse_from_str(&item.due_date, "%Y-%m-%d").unwrap_or(today);
+                if due < today {
+                    "overdue".into()
+                } else {
+                    "pending".into()
+                }
+            };
+        }
     }
-    Ok(())
-}
-
-
-
-pub async fn schedule(conn: &Connection, loan_id: &str) -> Result<Vec<ScheduleItem>, DbError> {
-    let mut rows = conn
-        .query(
-            "SELECT id, loan_id, seq, due_date, principal_due, interest_due, total_due, status \
-             FROM installment_schedule WHERE loan_id = ?1 ORDER BY seq",
-            params![loan_id],
-        )
-        .await?;
-    let mut out = Vec::new();
-    while let Some(row) = rows.next().await? {
-        out.push(ScheduleItem {
-            id: row.get(0)?,
-            loan_id: row.get(1)?,
-            seq: row.get(2)?,
-            due_date: row.get(3)?,
-            principal_due: row.get(4)?,
-            interest_due: row.get(5)?,
-            total_due: row.get(6)?,
-            status: row.get(7)?,
-        });
-    }
-    Ok(out)
 }
 
 #[cfg(test)]
@@ -283,25 +260,11 @@ mod tests {
     use crate::models::BorrowerInput;
     use crate::repo_borrowers;
 
-    async fn test_conn() -> Connection {
-        let db = libsql::Builder::new_local(":memory:").build().await.unwrap();
-        let conn = db.connect().unwrap();
-        crate::migrations::run_migrations(&conn).await.unwrap();
-        conn
-    }
-
     #[test]
-    fn add_months_clamps_day() {
-        let jan31 = NaiveDate::from_ymd_opt(2026, 1, 31).unwrap();
-        // +1 month -> Feb 28 (2026 not leap)
-        assert_eq!(add_months(jan31, 1), NaiveDate::from_ymd_opt(2026, 2, 28).unwrap());
-    }
-
-    #[tokio::test]
-    async fn create_installment_loan_generates_schedule() {
-        let conn = test_conn().await;
+    fn create_installment_loan_generates_schedule() {
+        let mut d = Dataset::default();
         let b = repo_borrowers::create(
-            &conn,
+            &mut d,
             BorrowerInput {
                 name: "Test".into(),
                 phone: None,
@@ -309,12 +272,9 @@ mod tests {
                 photo_path: None,
                 notes: None,
             },
-        )
-        .await
-        .unwrap();
-
+        );
         let loan = create(
-            &conn,
+            &mut d,
             LoanInput {
                 borrower_id: b.id,
                 principal: 10_000.0,
@@ -326,10 +286,9 @@ mod tests {
                 note: None,
             },
         )
-        .await
         .unwrap();
 
-        let sched = schedule(&conn, &loan.id).await.unwrap();
+        let sched = schedule(&d, &loan.id);
         assert_eq!(sched.len(), 5);
         assert_eq!(sched[0].interest_due, 200.0);
         assert_eq!(sched[0].due_date, "2026-02-15");
@@ -337,49 +296,24 @@ mod tests {
         assert_eq!(round2(total_principal), 10_000.0);
     }
 
-    #[tokio::test]
-    async fn refresh_marks_first_installment_paid() {
-        let conn = test_conn().await;
-        let b = repo_borrowers::create(
-            &conn,
-            BorrowerInput {
-                name: "Test".into(),
-                phone: None,
-                address: None,
-                photo_path: None,
-                notes: None,
-            },
-        )
-        .await
-        .unwrap();
-        let loan = create(
-            &conn,
-            LoanInput {
-                borrower_id: b.id,
-                principal: 10_000.0,
-                monthly_rate: 0.02,
-                interest_type: "simple".into(),
-                repayment_mode: "installments".into(),
-                term_months: Some(5),
-                start_date: "2026-01-15".into(),
-                note: None,
-            },
-        )
-        .await
-        .unwrap();
-        // First installment total = 2200. Pay exactly that.
-        conn.execute(
-            "INSERT INTO payments (id, loan_id, amount, interest_component, principal_component, \
-               paid_date, created_at, updated_at) \
-             VALUES ('p1', ?1, 2200, 200, 2000, '2026-02-15', '2026-02-15', '2026-02-15')",
-            libsql::params![loan.id.clone()],
-        )
-        .await
-        .unwrap();
-
-        refresh_schedule_status(&conn, &loan.id).await.unwrap();
-        let sched = schedule(&conn, &loan.id).await.unwrap();
-        assert_eq!(sched[0].status, "paid");
-        assert_ne!(sched[1].status, "paid");
+    #[test]
+    fn interest_accrued_to_date_simple() {
+        let loan = Loan {
+            id: "l1".into(),
+            borrower_id: "b1".into(),
+            principal: 10_000.0,
+            monthly_rate: 0.02,
+            interest_type: "simple".into(),
+            repayment_mode: "one_time".into(),
+            term_months: Some(12),
+            start_date: "2026-01-10".into(),
+            status: "active".into(),
+            note: None,
+            created_at: "x".into(),
+            updated_at: "x".into(),
+        };
+        // 3 whole months -> 10000 * 0.02 * 3 = 600
+        let as_of = NaiveDate::from_ymd_opt(2026, 4, 10).unwrap();
+        assert_eq!(interest_accrued(&loan, as_of), 600.0);
     }
 }

@@ -10,7 +10,13 @@ use chrono::{Datelike, NaiveDate};
 
 /// Round to 2 decimal places (money).
 pub fn round2(v: f64) -> f64 {
-    (v * 100.0).round() / 100.0
+    let r = (v * 100.0).round() / 100.0;
+    // Normalize negative zero so values never serialize/display as "-0".
+    if r == 0.0 {
+        0.0
+    } else {
+        r
+    }
 }
 
 /// Number of whole months elapsed from `start` to `as_of` (anniversary based).

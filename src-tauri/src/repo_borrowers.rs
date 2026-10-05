@@ -1,155 +1,111 @@
-//! Borrower repository: CRUD, search, soft-delete.
+//! Borrower operations on the in-memory dataset.
 
-use libsql::{params, Connection, Row};
-
-use crate::db::DbError;
+use crate::interest::round2;
 use crate::models::{Borrower, BorrowerInput};
+use crate::data::Dataset;
 use crate::util::{new_id, now_iso};
 
-fn map_row(row: &Row) -> Result<Borrower, DbError> {
-    Ok(Borrower {
-        id: row.get(0)?,
-        name: row.get(1)?,
-        phone: row.get(2)?,
-        address: row.get(3)?,
-        photo_path: row.get(4)?,
-        notes: row.get(5)?,
-        created_at: row.get(6)?,
-        updated_at: row.get(7)?,
-    })
+fn active(d: &Dataset) -> impl Iterator<Item = &Borrower> {
+    d.borrowers
+        .iter()
+        .filter(|b| !d.deleted_borrowers.contains(&b.id))
 }
 
-const SELECT: &str = "SELECT id, name, phone, address, photo_path, notes, created_at, updated_at \
-     FROM borrowers WHERE deleted_at IS NULL";
+pub fn list(d: &Dataset, search: Option<&str>) -> Vec<Borrower> {
+    let term = search.map(|s| s.trim().to_lowercase()).unwrap_or_default();
+    let mut out: Vec<Borrower> = active(d)
+        .filter(|b| {
+            if term.is_empty() {
+                true
+            } else {
+                b.name.to_lowercase().contains(&term)
+                    || b
+                        .phone
+                        .as_deref()
+                        .map(|p| p.to_lowercase().contains(&term))
+                        .unwrap_or(false)
+            }
+        })
+        .cloned()
+        .collect();
+    out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    out
+}
 
-/// List borrowers, optionally filtered by a name/phone search term.
-pub async fn list(conn: &Connection, search: Option<String>) -> Result<Vec<Borrower>, DbError> {
-    let mut out = Vec::new();
-    let mut rows = match search {
-        Some(term) if !term.trim().is_empty() => {
-            let like = format!("%{}%", term.trim());
-            conn.query(
-                &format!("{SELECT} AND (name LIKE ?1 OR phone LIKE ?1) ORDER BY name"),
-                params![like],
-            )
-            .await?
-        }
-        _ => conn.query(&format!("{SELECT} ORDER BY name"), ()).await?,
+pub fn get(d: &Dataset, id: &str) -> Option<Borrower> {
+    active(d).find(|b| b.id == id).cloned()
+}
+
+pub fn create(d: &mut Dataset, input: BorrowerInput) -> Borrower {
+    let now = now_iso();
+    let b = Borrower {
+        id: new_id(),
+        name: input.name,
+        phone: input.phone,
+        address: input.address,
+        photo_path: input.photo_path,
+        notes: input.notes,
+        created_at: now.clone(),
+        updated_at: now,
     };
-    while let Some(row) = rows.next().await? {
-        out.push(map_row(&row)?);
+    d.borrowers.push(b.clone());
+    b
+}
+
+pub fn update(d: &mut Dataset, id: &str, input: BorrowerInput) -> Option<Borrower> {
+    let now = now_iso();
+    if let Some(b) = d.borrowers.iter_mut().find(|b| b.id == id) {
+        b.name = input.name;
+        b.phone = input.phone;
+        b.address = input.address;
+        b.photo_path = input.photo_path;
+        b.notes = input.notes;
+        b.updated_at = now;
+        Some(b.clone())
+    } else {
+        None
     }
-    Ok(out)
 }
 
-pub async fn get(conn: &Connection, id: &str) -> Result<Option<Borrower>, DbError> {
-    let mut rows = conn
-        .query(&format!("{SELECT} AND id = ?1"), params![id])
-        .await?;
-    match rows.next().await? {
-        Some(row) => Ok(Some(map_row(&row)?)),
-        None => Ok(None),
+pub fn soft_delete(d: &mut Dataset, id: &str) {
+    if !d.deleted_borrowers.iter().any(|x| x == id) {
+        d.deleted_borrowers.push(id.to_string());
     }
-}
-
-pub async fn create(conn: &Connection, input: BorrowerInput) -> Result<Borrower, DbError> {
-    let id = new_id();
-    let now = now_iso();
-    conn.execute(
-        "INSERT INTO borrowers (id, name, phone, address, photo_path, notes, created_at, updated_at) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
-        params![
-            id.clone(),
-            input.name,
-            input.phone,
-            input.address,
-            input.photo_path,
-            input.notes,
-            now,
-        ],
-    )
-    .await?;
-    get(conn, &id).await?.ok_or(DbError::Msg("insert failed".into()))
-}
-
-pub async fn update(
-    conn: &Connection,
-    id: &str,
-    input: BorrowerInput,
-) -> Result<Borrower, DbError> {
-    let now = now_iso();
-    conn.execute(
-        "UPDATE borrowers SET name = ?2, phone = ?3, address = ?4, photo_path = ?5, \
-         notes = ?6, updated_at = ?7 WHERE id = ?1 AND deleted_at IS NULL",
-        params![
-            id,
-            input.name,
-            input.phone,
-            input.address,
-            input.photo_path,
-            input.notes,
-            now,
-        ],
-    )
-    .await?;
-    get(conn, id).await?.ok_or(DbError::Msg("borrower not found".into()))
-}
-
-/// Soft-delete: preserves history for reports.
-pub async fn soft_delete(conn: &Connection, id: &str) -> Result<(), DbError> {
-    let now = now_iso();
-    conn.execute(
-        "UPDATE borrowers SET deleted_at = ?2, updated_at = ?2 WHERE id = ?1",
-        params![id, now],
-    )
-    .await?;
-    Ok(())
 }
 
 /// Total outstanding principal for a borrower across their active loans.
-pub async fn total_outstanding(conn: &Connection, borrower_id: &str) -> Result<f64, DbError> {
-    let mut rows = conn
-        .query(
-            "SELECT \
-               COALESCE(SUM(l.principal), 0) - COALESCE(( \
-                 SELECT SUM(p.principal_component) FROM payments p \
-                 JOIN loans l2 ON l2.id = p.loan_id \
-                 WHERE l2.borrower_id = ?1 AND p.deleted_at IS NULL AND l2.deleted_at IS NULL \
-               ), 0) \
-             FROM loans l \
-             WHERE l.borrower_id = ?1 AND l.deleted_at IS NULL \
-               AND l.status IN ('active','overdue')",
-            params![borrower_id],
-        )
-        .await?;
-    if let Some(row) = rows.next().await? {
-        Ok(crate::util::get_f64(&row, 0)?)
-    } else {
-        Ok(0.0)
-    }
+pub fn total_outstanding(d: &Dataset, borrower_id: &str) -> f64 {
+    let active_loans: Vec<&crate::models::Loan> = d
+        .loans
+        .iter()
+        .filter(|l| {
+            l.borrower_id == borrower_id
+                && !d.deleted_loans.contains(&l.id)
+                && (l.status == "active" || l.status == "overdue")
+        })
+        .collect();
+    let principal: f64 = active_loans.iter().map(|l| l.principal).sum();
+    let paid: f64 = d
+        .payments
+        .iter()
+        .filter(|p| {
+            !d.deleted_payments.contains(&p.id)
+                && active_loans.iter().any(|l| l.id == p.loan_id)
+        })
+        .map(|p| p.principal_component)
+        .sum();
+    round2(principal - paid)
 }
-
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    async fn test_conn() -> Connection {
-        let db = libsql::Builder::new_local(":memory:")
-            .build()
-            .await
-            .unwrap();
-        let conn = db.connect().unwrap();
-        crate::migrations::run_migrations(&conn).await.unwrap();
-        conn
-    }
-
-    #[tokio::test]
-    async fn borrower_crud_and_search() {
-        let conn = test_conn().await;
-
+    #[test]
+    fn borrower_crud_and_search() {
+        let mut d = Dataset::default();
         let created = create(
-            &conn,
+            &mut d,
             BorrowerInput {
                 name: "Ramesh Kumar".into(),
                 phone: Some("9876543210".into()),
@@ -157,18 +113,12 @@ mod tests {
                 photo_path: None,
                 notes: None,
             },
-        )
-        .await
-        .unwrap();
+        );
         assert_eq!(created.name, "Ramesh Kumar");
+        assert_eq!(list(&d, Some("rame")).len(), 1);
 
-        // List + search by partial name.
-        let found = list(&conn, Some("rame".into())).await.unwrap();
-        assert_eq!(found.len(), 1);
-
-        // Update.
         let updated = update(
-            &conn,
+            &mut d,
             &created.id,
             BorrowerInput {
                 name: "Ramesh K".into(),
@@ -178,14 +128,10 @@ mod tests {
                 notes: None,
             },
         )
-        .await
         .unwrap();
-        assert_eq!(updated.name, "Ramesh K");
         assert_eq!(updated.address.as_deref(), Some("Bengaluru"));
 
-        // Soft delete removes from list.
-        soft_delete(&conn, &created.id).await.unwrap();
-        let after = list(&conn, None).await.unwrap();
-        assert_eq!(after.len(), 0);
+        soft_delete(&mut d, &created.id);
+        assert_eq!(list(&d, None).len(), 0);
     }
 }
