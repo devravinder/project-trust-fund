@@ -63,11 +63,8 @@ function App() {
   useEffect(() => {
     async function bootstrap() {
       try {
-        // Try saved Turso credentials; fall back to a local-only DB.
-        const connected = await db.connectSaved()
-        if (!connected) {
-          await db.connectLocal()
-        }
+        // Connects to saved Turso creds if present, else the local JSON store.
+        await db.connectSaved()
         setReady(true)
       } catch (e) {
         setError(String(e))

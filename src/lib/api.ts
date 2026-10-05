@@ -15,6 +15,8 @@ export interface LoanSummary extends Loan {
   principal_recovered: number
   interest_collected: number
   outstanding_principal: number
+  interest_accrued_to_date: number
+  interest_due: number
 }
 
 export interface PaymentView extends Payment {
@@ -59,18 +61,26 @@ export interface PersonReport {
 // ---- Database / connection ----
 
 export const db = {
+  /** Open the local JSON store (offline, no account). */
   connectLocal: () => invoke<void>('db_connect_local'),
+  /** Connect to Turso; returns true if local JSON still has data to migrate. */
   connectTurso: (syncUrl: string, authToken: string) =>
-    invoke<void>('db_connect_turso', { syncUrl, authToken }),
-  connectSaved: () => invoke<boolean>('db_connect_saved'),
+    invoke<boolean>('db_connect_turso', { syncUrl, authToken }),
+  /** Startup: connect saved Turso creds or local JSON. Returns 'turso' | 'local'. */
+  connectSaved: () => invoke<'turso' | 'local'>('db_connect_saved'),
   hasCredentials: () => invoke<boolean>('db_has_credentials'),
   getCredentials: () =>
     invoke<{ sync_url: string; auth_token: string } | null>(
       'db_get_credentials',
     ),
+  /** Clear Turso creds and switch back to local JSON. */
   clearCredentials: () => invoke<void>('db_clear_credentials'),
   isConnected: () => invoke<boolean>('db_is_connected'),
-  sync: () => invoke<void>('db_sync'),
+  isRemote: () => invoke<boolean>('db_is_remote'),
+  /** Migrate local JSON data into Turso, then delete the JSON file. */
+  migrateJsonToTurso: () => invoke<void>('migrate_json_to_turso'),
+  /** Discard the local JSON file (user declined migration). */
+  deleteLocalJson: () => invoke<void>('delete_local_json'),
   seed: () => invoke<void>('dev_seed'),
 }
 

@@ -8,7 +8,6 @@ import {
 } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { cn } from '@/lib/utils'
-import { ThemeToggle } from '@/components/theme/ThemeToggle'
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -20,6 +19,7 @@ const navItems = [
 ]
 
 function NavItems({ orientation }: { orientation: 'side' | 'bottom' }) {
+  const isBottom = orientation === 'bottom'
   return (
     <>
       {navItems.map(({ to, label, icon: Icon, end }) => (
@@ -27,18 +27,20 @@ function NavItems({ orientation }: { orientation: 'side' | 'bottom' }) {
           key={to}
           to={to}
           end={end}
+          aria-label={label}
+          title={label}
           className={({ isActive }) =>
             cn(
               'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
-              orientation === 'bottom' && 'flex-col gap-1 px-2 py-1 text-xs',
+              isBottom && 'justify-center p-2',
               isActive
                 ? 'bg-primary text-primary-foreground'
                 : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
             )
           }
         >
-          <Icon className={orientation === 'bottom' ? 'size-5' : 'size-4'} />
-          <span>{label}</span>
+          <Icon className={isBottom ? 'size-6' : 'size-4'} />
+          {!isBottom && <span>{label}</span>}
         </NavLink>
       ))}
     </>
@@ -50,29 +52,20 @@ export function AppLayout() {
     <div className="flex min-h-screen bg-background text-foreground">
       {/* Sidebar (desktop) */}
       <aside className="hidden w-56 shrink-0 flex-col border-r p-4 md:flex">
-        <div className="mb-6 px-3">
-          <h1 className="text-lg font-bold">TrustFund</h1>
-          <p className="text-xs text-muted-foreground">Lend &amp; recover</p>
+        <div className="mb-6 flex items-center gap-2 px-1">
+          <img src="/logo.svg?v=8" alt="TrustFund" className="size-9" />
+          <div>
+            <h1 className="text-lg font-bold leading-tight">TrustFund</h1>
+            <p className="text-xs text-muted-foreground">Lend &amp; recover</p>
+          </div>
         </div>
         <nav className="flex flex-col gap-1">
           <NavItems orientation="side" />
         </nav>
-        <div className="mt-auto pt-4">
-          <ThemeToggle />
-        </div>
       </aside>
 
       {/* Main content */}
       <div className="flex flex-1 flex-col">
-        {/* Top bar (mobile) with logo + theme toggle */}
-        <header className="flex items-center justify-between border-b p-3 md:hidden">
-          <div className="flex items-center gap-2">
-            <img src="/logo.svg" alt="TrustFund" className="size-6" />
-            <span className="font-bold">TrustFund</span>
-          </div>
-          <ThemeToggle />
-        </header>
-
         <main className="flex-1 p-4 pb-20 md:pb-4">
           <Outlet />
         </main>

@@ -106,6 +106,28 @@ export function LoanDetailPage() {
         </Card>
         <Card>
           <CardContent className="p-4">
+            <p className="text-sm text-muted-foreground">
+              Interest to date
+            </p>
+            <p className="text-xl font-bold">
+              {formatCurrency(summary.interest_accrued_to_date)}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              accrued from {formatDate(summary.start_date)}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-sm text-muted-foreground">Interest due</p>
+            <p className="text-xl font-bold text-destructive">
+              {formatCurrency(summary.interest_due)}
+            </p>
+            <p className="text-xs text-muted-foreground">accrued − collected</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
             <p className="text-sm text-muted-foreground">Status</p>
             <p className="text-xl font-bold capitalize">
               {summary.status.replace('_', ' ')}

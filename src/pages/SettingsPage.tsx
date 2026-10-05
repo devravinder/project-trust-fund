@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Sun, Moon, Monitor } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/button'
@@ -6,14 +7,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { db } from '@/lib/api'
 import { exporter } from '@/lib/api'
 import { downloadText } from '@/lib/download'
+import { useTheme } from '@/components/theme/ThemeProvider'
 import { ConnectDialog } from '@/features/connection/ConnectDialog'
 import { ShareConnectionDialog } from '@/features/connection/ShareConnectionDialog'
+import { MigrationPromptDialog } from '@/features/connection/MigrationPromptDialog'
 
 export function SettingsPage() {
+  const { theme, setTheme } = useTheme()
   const [hasCreds, setHasCreds] = useState(false)
-  const [syncing, setSyncing] = useState(false)
   const [connectOpen, setConnectOpen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
+  const [migrateOpen, setMigrateOpen] = useState(false)
 
   useEffect(() => {
     db.hasCredentials()
@@ -21,29 +25,17 @@ export function SettingsPage() {
       .catch((e) => toast.error(String(e)))
   }, [])
 
-  const handleSync = async () => {
-    setSyncing(true)
-    try {
-      await db.sync()
-      toast.success('Synced')
-    } catch (e) {
-      toast.error(String(e))
-    } finally {
-      setSyncing(false)
-    }
-  }
-
   const handleDisconnect = async () => {
     if (
       !confirm(
-        'Disconnect this device? Your cloud data stays; the app falls back to local on next launch.',
+        'Disconnect from Turso? Your cloud data stays untouched; this device switches back to local offline storage.',
       )
     )
       return
     try {
       await db.clearCredentials()
       setHasCreds(false)
-      toast.success('Credentials cleared. Restart the app to apply.')
+      toast.success('Disconnected. Now using local storage.')
     } catch (e) {
       toast.error(String(e))
     }
@@ -64,8 +56,42 @@ export function SettingsPage() {
     <div className="max-w-2xl">
       <PageHeader
         title="Settings"
-        description="Database connection (bring your own Turso database)"
+        description="Appearance and database connection"
       />
+
+      <Card className="mb-4">
+        <CardHeader>
+          <CardTitle>Appearance</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant={theme === 'light' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setTheme('light')}
+            >
+              <Sun /> Light
+            </Button>
+            <Button
+              variant={theme === 'dark' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setTheme('dark')}
+            >
+              <Moon /> Dark
+            </Button>
+            <Button
+              variant={theme === 'system' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setTheme('system')}
+            >
+              <Monitor /> System
+            </Button>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            “System” follows your device’s light/dark setting.
+          </p>
+        </CardContent>
+      </Card>
 
       <Card className="mb-4">
         <CardHeader>
@@ -77,14 +103,11 @@ export function SettingsPage() {
           {hasCreds ? (
             <>
               <p className="text-sm text-muted-foreground">
-                This device is configured to sync with your Turso cloud
-                database. Share the connection to set up another device
-                instantly.
+                This device reads and writes directly to your Turso cloud
+                database. Use the same connection on another device to share the
+                same data. Share the connection below to set one up instantly.
               </p>
               <div className="flex flex-wrap gap-2">
-                <Button onClick={handleSync} disabled={syncing}>
-                  {syncing ? 'Syncing…' : 'Sync now'}
-                </Button>
                 <Button variant="outline" onClick={() => setShareOpen(true)}>
                   Share connection (QR)
                 </Button>
@@ -148,9 +171,17 @@ export function SettingsPage() {
       <ConnectDialog
         open={connectOpen}
         onOpenChange={setConnectOpen}
-        onConnected={() => setHasCreds(true)}
+        onConnected={(hasLocalData) => {
+          setHasCreds(true)
+          if (hasLocalData) setMigrateOpen(true)
+        }}
       />
       <ShareConnectionDialog open={shareOpen} onOpenChange={setShareOpen} />
+      <MigrationPromptDialog
+        open={migrateOpen}
+        onOpenChange={setMigrateOpen}
+        onDone={() => {}}
+      />
 
       <Card className="mt-4">
         <CardHeader>

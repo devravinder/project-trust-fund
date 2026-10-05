@@ -22,7 +22,7 @@ export function ConnectDialog({
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onConnected: () => void
+  onConnected: (hasLocalData: boolean) => void
 }) {
   const [mode, setMode] = useState<Mode>('scan') // scan is the default
   const [url, setUrl] = useState('')
@@ -32,10 +32,10 @@ export function ConnectDialog({
   const connect = async (syncUrl: string, authToken: string) => {
     setConnecting(true)
     try {
-      await db.connectTurso(syncUrl.trim(), authToken.trim())
-      toast.success('Connected and synced')
+      const hasLocalData = await db.connectTurso(syncUrl.trim(), authToken.trim())
+      toast.success('Connected to Turso')
       onOpenChange(false)
-      onConnected()
+      onConnected(hasLocalData)
     } catch (e) {
       toast.error(`Connection failed: ${e}`)
     } finally {
@@ -123,7 +123,7 @@ export function ConnectDialog({
               onClick={() => connect(url, token)}
               disabled={connecting || !url || !token}
             >
-              {connecting ? 'Connecting…' : 'Connect & sync'}
+              {connecting ? 'Connecting…' : 'Connect'}
             </Button>
           </div>
         )}

@@ -7,7 +7,10 @@ const inr = new Intl.NumberFormat('en-IN', {
 })
 
 export function formatCurrency(value: number): string {
-  return inr.format(value ?? 0)
+  let v = value ?? 0
+  // Avoid "-₹0.00": collapse negative zero and sub-paisa noise to 0.
+  if (Object.is(v, -0) || Math.abs(v) < 0.005) v = 0
+  return inr.format(v)
 }
 
 export function formatDate(iso: string): string {
