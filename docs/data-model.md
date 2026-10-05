@@ -24,8 +24,9 @@ are identical; only the storage shape differs.
 ### Loan
 `id, borrower_id, principal, monthly_rate (fraction, e.g. 0.02 = 2%/month),
 interest_type ('simple' | 'compound'; v1 = simple), repayment_mode ('one_time' |
-'installments'), term_months?, start_date, status ('active' | 'overdue' |
-'closed' | 'written_off'), note?, created_at, updated_at`
+'installments'), end_date? (YYYY-MM-DD; drives term, interest freeze, overdue),
+start_date, status ('active' | 'overdue' | 'closed' | 'written_off'), note?,
+created_at, updated_at`
 
 ### Payment
 `id, loan_id, amount, interest_component, principal_component, paid_date, note?,
@@ -64,7 +65,7 @@ flag implements soft-delete; queries filter `WHERE deleted = 0`.
 ```
 borrowers(id, name, phone, address, photo_path, notes, created_at, updated_at, deleted)
 loans(id, borrower_id, principal, monthly_rate, interest_type, repayment_mode,
-      term_months, start_date, status, note, created_at, updated_at, deleted)
+      end_date, start_date, status, note, created_at, updated_at, deleted)
 payments(id, loan_id, amount, interest_component, principal_component,
          paid_date, note, created_at, updated_at, deleted)
 schedule(id, loan_id, seq, due_date, principal_due, interest_due, total_due, status)

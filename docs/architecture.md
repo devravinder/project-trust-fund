@@ -107,7 +107,7 @@ erDiagram
     LOAN ||--o{ SCHEDULE : plans
 
     BORROWER { string id PK  string name  string phone }
-    LOAN { string id PK  string borrower_id FK  real principal  real monthly_rate  string interest_type  string repayment_mode  int term_months  string start_date  string status }
+    LOAN { string id PK  string borrower_id FK  real principal  real monthly_rate  string interest_type  string repayment_mode  string end_date  string start_date  string status }
     PAYMENT { string id PK  string loan_id FK  real amount  real interest_component  real principal_component  string paid_date }
     SCHEDULE { string id PK  string loan_id FK  int seq  string due_date  real total_due  string status }
 ```
