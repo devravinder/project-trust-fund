@@ -180,149 +180,164 @@ async fn clear_all_data(state: tauri::State<'_, StoreState>) -> Result<(), Strin
 
 #[tauri::command]
 async fn dev_seed(state: tauri::State<'_, StoreState>) -> Result<(), String> {
+    use crate::data::Dataset;
+
+    // Free helpers (not closures) so multiple can borrow the dataset in turn.
+    fn seed_borrower(d: &mut Dataset, name: &str, phone: &str, addr: Option<&str>) -> String {
+        repo_borrowers::create(
+            d,
+            BorrowerInput {
+                name: name.into(),
+                phone: Some(phone.into()),
+                address: addr.map(|a| a.into()),
+                photo_path: None,
+                notes: None,
+            },
+        )
+        .id
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn seed_loan(
+        d: &mut Dataset,
+        borrower_id: String,
+        principal: f64,
+        rate: f64,
+        mode: &str,
+        start: &str,
+        end: &str,
+        note: Option<&str>,
+    ) -> Option<String> {
+        repo_loans::create(
+            d,
+            LoanInput {
+                borrower_id,
+                principal,
+                monthly_rate: rate,
+                interest_type: "simple".into(),
+                repayment_mode: mode.into(),
+                end_date: Some(end.into()),
+                start_date: start.into(),
+                note: note.map(|n| n.into()),
+            },
+        )
+        .ok()
+        .map(|l| l.id)
+    }
+
+    fn seed_pay(d: &mut Dataset, loan_id: &str, amount: f64, date: &str) {
+        let _ = repo_payments::create(
+            d,
+            PaymentInput {
+                loan_id: loan_id.to_string(),
+                amount,
+                interest_component: None,
+                principal_component: None,
+                paid_date: date.into(),
+                note: None,
+            },
+        );
+    }
+
     data::write(&state, |d| {
-        // Helper to add a borrower.
-        let mut add_borrower = |name: &str, phone: &str, addr: Option<&str>| {
-            repo_borrowers::create(
-                d,
-                BorrowerInput {
-                    name: name.into(),
-                    phone: Some(phone.into()),
-                    address: addr.map(|a| a.into()),
-                    photo_path: None,
-                    notes: None,
-                },
-            )
-            .id
-        };
+        let ramesh = seed_borrower(d, "Ramesh Kumar", "9876543210", Some("Bengaluru"));
+        let asha = seed_borrower(d, "Asha Verma", "9123456780", None);
+        let suresh = seed_borrower(d, "Suresh Rao", "9988776655", Some("Hyderabad"));
+        let meena = seed_borrower(d, "Meena Nair", "9001122334", Some("Kochi"));
+        let imran = seed_borrower(d, "Imran Shaikh", "9765432109", Some("Pune"));
 
-        let ramesh = add_borrower("Ramesh Kumar", "9876543210", Some("Bengaluru"));
-        let asha = add_borrower("Asha Verma", "9123456780", None);
-        let suresh = add_borrower("Suresh Rao", "9988776655", Some("Hyderabad"));
-        let meena = add_borrower("Meena Nair", "9001122334", Some("Kochi"));
-        let imran = add_borrower("Imran Shaikh", "9765432109", Some("Pune"));
+        // Sample data spans ~1 year (2025-07 .. 2026-06) with payments spread
+        // across many months so the monthly "by time" report is meaningful.
 
-        // 1) Ramesh — installment loan with one payment made.
-        if let Ok(l) = repo_loans::create(
+        // 1) Ramesh — 12-month installment loan, paid monthly across the year.
+        if let Some(id) = seed_loan(
             d,
-            LoanInput {
-                borrower_id: ramesh,
-                principal: 10_000.0,
-                monthly_rate: 0.02,
-                interest_type: "simple".into(),
-                repayment_mode: "installments".into(),
-                end_date: Some("2026-06-15".into()),
-                start_date: "2026-01-15".into(),
-                note: Some("Installment loan".into()),
-            },
+            ramesh,
+            24_000.0,
+            0.02,
+            "installments",
+            "2025-07-01",
+            "2026-06-01",
+            Some("12-month installment loan"),
         ) {
-            let _ = repo_payments::create(
-                d,
-                PaymentInput {
-                    loan_id: l.id,
-                    amount: 2_200.0,
-                    interest_component: None,
-                    principal_component: None,
-                    paid_date: "2026-02-15".into(),
-                    note: Some("First installment".into()),
-                },
-            );
+            for (date, amt) in [
+                ("2025-08-01", 2480.0),
+                ("2025-09-01", 2440.0),
+                ("2025-10-01", 2400.0),
+                ("2025-11-01", 2360.0),
+                ("2025-12-01", 2320.0),
+                ("2026-01-01", 2280.0),
+                ("2026-02-01", 2240.0),
+                ("2026-03-01", 2200.0),
+            ] {
+                seed_pay(d, &id, amt, date);
+            }
         }
 
-        // 2) Asha — zero-interest one-time (track-only).
-        let _ = repo_loans::create(
+        // 2) Meena — larger installment loan started mid-2025, steady payments.
+        if let Some(id) = seed_loan(
             d,
-            LoanInput {
-                borrower_id: asha,
-                principal: 5_000.0,
-                monthly_rate: 0.0,
-                interest_type: "simple".into(),
-                repayment_mode: "one_time".into(),
-                end_date: Some("2026-08-01".into()),
-                start_date: "2026-02-01".into(),
-                note: Some("Zero-interest, friend".into()),
-            },
+            meena,
+            60_000.0,
+            0.015,
+            "installments",
+            "2025-09-01",
+            "2026-09-01",
+            None,
+        ) {
+            for (date, amt) in [
+                ("2025-10-01", 5900.0),
+                ("2025-11-01", 5800.0),
+                ("2025-12-01", 5700.0),
+                ("2026-01-01", 5600.0),
+                ("2026-02-01", 5500.0),
+                ("2026-03-01", 5400.0),
+            ] {
+                seed_pay(d, &id, amt, date);
+            }
+        }
+
+        // 3) Imran — one-time loan, periodic interest-only payments.
+        if let Some(id) = seed_loan(
+            d,
+            imran,
+            15_000.0,
+            0.025,
+            "one_time",
+            "2025-08-10",
+            "2026-08-10",
+            Some("Interest paid periodically"),
+        ) {
+            for date in ["2025-09-10", "2025-11-10", "2026-01-10", "2026-03-10"] {
+                seed_pay(d, &id, 375.0, date);
+            }
+        }
+
+        // 4) Asha — zero-interest one-time (track-only), partially repaid.
+        if let Some(id) = seed_loan(
+            d,
+            asha,
+            5_000.0,
+            0.0,
+            "one_time",
+            "2025-10-01",
+            "2026-10-01",
+            Some("Zero-interest, friend"),
+        ) {
+            seed_pay(d, &id, 2_000.0, "2026-01-01");
+        }
+
+        // 5) Suresh — overdue one-time loan (ended in the past, unpaid).
+        let _ = seed_loan(
+            d,
+            suresh,
+            20_000.0,
+            0.015,
+            "one_time",
+            "2025-01-01",
+            "2025-06-01",
+            Some("Overdue — follow up"),
         );
-
-        // 3) Suresh — overdue one-time loan (ended in the past, unpaid).
-        let _ = repo_loans::create(
-            d,
-            LoanInput {
-                borrower_id: suresh,
-                principal: 20_000.0,
-                monthly_rate: 0.015,
-                interest_type: "simple".into(),
-                repayment_mode: "one_time".into(),
-                end_date: Some("2025-06-01".into()),
-                start_date: "2025-01-01".into(),
-                note: Some("Overdue — follow up".into()),
-            },
-        );
-
-        // 4) Meena — larger installment loan, partially paid.
-        if let Ok(l) = repo_loans::create(
-            d,
-            LoanInput {
-                borrower_id: meena,
-                principal: 36_000.0,
-                monthly_rate: 0.02,
-                interest_type: "simple".into(),
-                repayment_mode: "installments".into(),
-                end_date: Some("2026-12-01".into()),
-                start_date: "2026-01-01".into(),
-                note: None,
-            },
-        ) {
-            let _ = repo_payments::create(
-                d,
-                PaymentInput {
-                    loan_id: l.id.clone(),
-                    amount: 3_720.0,
-                    interest_component: None,
-                    principal_component: None,
-                    paid_date: "2026-02-01".into(),
-                    note: None,
-                },
-            );
-            let _ = repo_payments::create(
-                d,
-                PaymentInput {
-                    loan_id: l.id,
-                    amount: 3_660.0,
-                    interest_component: None,
-                    principal_component: None,
-                    paid_date: "2026-03-01".into(),
-                    note: None,
-                },
-            );
-        }
-
-        // 5) Imran — one-time loan with interest, one interest payment.
-        if let Ok(l) = repo_loans::create(
-            d,
-            LoanInput {
-                borrower_id: imran,
-                principal: 15_000.0,
-                monthly_rate: 0.025,
-                interest_type: "simple".into(),
-                repayment_mode: "one_time".into(),
-                end_date: Some("2026-10-01".into()),
-                start_date: "2026-02-10".into(),
-                note: None,
-            },
-        ) {
-            let _ = repo_payments::create(
-                d,
-                PaymentInput {
-                    loan_id: l.id,
-                    amount: 375.0,
-                    interest_component: None,
-                    principal_component: None,
-                    paid_date: "2026-03-10".into(),
-                    note: Some("Interest only".into()),
-                },
-            );
-        }
     })
     .await
     .map_err(|e| e.to_string())
