@@ -103,7 +103,13 @@ function App() {
   return (
     <>
       <RouterProvider router={router} />
-      <Toaster richColors closeButton position="top-center" duration={3000} />
+      <Toaster
+        richColors
+        closeButton
+        position="top-center"
+        duration={3000}
+        toastOptions={{ classNames: { closeButton: 'tf-close' } }}
+      />
     </>
   )
 }

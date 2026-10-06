@@ -88,9 +88,10 @@ body {
 
 
 /* Place the toast close (X) button in the top-right corner. */
+[data-sonner-toast] .tf-close,
 [data-sonner-toast] [data-close-button] {
-  left: auto;
-  right: 0;
-  top: 0;
-  transform: translate(35%, -35%);
+  left: auto !important;
+  right: 0 !important;
+  top: 0 !important;
+  transform: translate(35%, -35%) !important;
 }
