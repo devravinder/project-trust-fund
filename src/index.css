@@ -85,3 +85,12 @@ body {
     Roboto,
     sans-serif;
 }
+
+
+/* Place the toast close (X) button in the top-right corner. */
+[data-sonner-toast] [data-close-button] {
+  left: auto;
+  right: 0;
+  top: 0;
+  transform: translate(35%, -35%);
+}
