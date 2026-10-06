@@ -107,7 +107,7 @@ function App() {
         richColors
         closeButton
         position="top-center"
-        duration={3000}
+        duration={2000}
         toastOptions={{ classNames: { closeButton: 'tf-close' } }}
       />
     </>
