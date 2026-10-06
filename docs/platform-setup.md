@@ -10,13 +10,14 @@ is covered in the README.
 
 > **Rust toolchain note:** Android/Linux cross-target builds require **rustup**
 > (to add targets). A standalone (non-rustup) Rust install cannot add targets.
-> Install rustup from https://rustup.rs.
+> Install rustup from <https://rustup.rs>.
 
 ---
 
 ## 1. Linux — desktop dev mode
 
 ### System packages
+
 Tauri v2 needs WebKitGTK + a build toolchain. On Debian/Ubuntu:
 
 ```bash
@@ -46,6 +47,7 @@ sudo pacman -S --needed webkit2gtk-4.1 base-devel curl wget file openssl \
 ```
 
 ### Run / build
+
 ```bash
 pnpm install
 pnpm run tauri:dev            # desktop dev (hot reload)
@@ -62,10 +64,12 @@ needed since the data layer is pure Rust).
 ### 2.1 Prerequisites
 
 1. **rustup** + Android targets:
+
    ```bash
    rustup target add aarch64-linux-android armv7-linux-androideabi \
      i686-linux-android x86_64-linux-android
    ```
+
 2. **JDK 17** (Temurin/OpenJDK 17).
 3. **Android SDK + NDK** — easiest via **Android Studio** (install SDK,
    Platform-Tools, and a recent **NDK**).
@@ -73,6 +77,7 @@ needed since the data layer is pure Rust).
 ### 2.2 Environment variables
 
 **Linux (bash, ~/.bashrc):**
+
 ```bash
 export JAVA_HOME="/usr/lib/jvm/java-17-openjdk"
 export ANDROID_HOME="$HOME/Android/Sdk"
@@ -81,6 +86,7 @@ export PATH="$ANDROID_HOME/platform-tools:$PATH"
 ```
 
 **Windows (PowerShell, user env vars):**
+
 ```powershell
 setx JAVA_HOME "C:\Program Files\Eclipse Adoptium\jdk-17"
 setx ANDROID_HOME "$env:LOCALAPPDATA\Android\Sdk"
@@ -91,6 +97,7 @@ setx NDK_HOME "$env:LOCALAPPDATA\Android\Sdk\ndk\<ndk-version>"
 ### 2.3 One-time: initialize the Android project
 
 Generates `src-tauri/gen/android`.
+
 ```bash
 pnpm run android:init
 ```
@@ -126,14 +133,17 @@ install path.
 ### 2.5 Run on a device/emulator (dev)
 
 Connect a device (USB debugging) or start an emulator, then:
+
 ```bash
 pnpm run android:dev
 ```
 
 ### 2.6 Build the APK
+
 ```bash
 pnpm run android:build:apk
 ```
+
 Output (debug/unsigned): `src-tauri/gen/android/app/build/outputs/apk/`
 
 ### 2.7 Signing (to share a release APK)
@@ -142,10 +152,34 @@ Output (debug/unsigned): `src-tauri/gen/android/app/build/outputs/apk/`
 keytool -genkey -v -keystore trustfund.jks -keyalg RSA -keysize 2048 \
   -validity 10000 -alias trustfund
 ```
+
 Configure signing in `src-tauri/gen/android/app/build.gradle.kts` (or a
 `keystore.properties`) per Tauri's Android signing docs, then
 `pnpm run android:build:apk`. Share the `.apk`; friends enable "install from
 unknown sources". **Keep the keystore out of git.**
+
+or
+
+1. set path
+
+APKSIGNER=~/Android/Sdk/build-tools/35.0.0/apksigner
+
+1. Use the Android debug keystore
+   - normally exists here: ~/.android/debug.keystore
+
+2. Sign the APK
+
+   ```bash
+     $APKSIGNER sign \
+
+    --ks ~/.android/debug.keystore \
+    --ks-key-alias androiddebugkey \
+    --ks-pass pass:android \
+    --key-pass pass:android \
+    --out app-universal-signed.apk \
+    app-universal-release-unsigned.apk
+
+   ```
 
 ---
 
@@ -173,9 +207,11 @@ publish). Until the mirror carries the 2.12 npm packages, the CLI bundling step
 is blocked.
 
 Workaround for a desktop binary without the CLI check:
+
 ```bash
 pnpm run build:binary        # frontend + cargo build --release
 ```
+
 → `src-tauri/target/release/trust-fund.exe`. Dev (`tauri dev`) only warns.
 
 To unblock full `tauri build` / APK bundling: ask the JFrog admin to mirror
@@ -187,7 +223,7 @@ non-corrupt Rust `tauri` 2.11.x).
 ## 5. Quick reference — scripts
 
 | Script | Purpose |
-|---|---|
+| --- | --- |
 | `tauri:dev` | Desktop dev (hot reload) |
 | `tauri:build` | Desktop package (installer) |
 | `build:binary` | Desktop release binary (bypasses CLI version check) |
