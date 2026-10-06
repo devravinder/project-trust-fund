@@ -225,7 +225,7 @@ async fn dev_seed(state: tauri::State<'_, StoreState>) -> Result<(), String> {
         .map(|l| l.id)
     }
 
-    fn seed_pay(d: &mut Dataset, loan_id: &str, amount: f64, date: &str) {
+    fn seed_pay(d: &mut Dataset, loan_id: &str, amount: f64, date: &str, note: Option<&str>) {
         let _ = repo_payments::create(
             d,
             PaymentInput {
@@ -234,7 +234,7 @@ async fn dev_seed(state: tauri::State<'_, StoreState>) -> Result<(), String> {
                 interest_component: None,
                 principal_component: None,
                 paid_date: date.into(),
-                note: None,
+                note: note.map(|n| n.into()),
             },
         );
     }
@@ -270,7 +270,7 @@ async fn dev_seed(state: tauri::State<'_, StoreState>) -> Result<(), String> {
                 ("2026-02-01", 2240.0),
                 ("2026-03-01", 2200.0),
             ] {
-                seed_pay(d, &id, amt, date);
+                seed_pay(d, &id, amt, date, None);
             }
         }
 
@@ -293,7 +293,7 @@ async fn dev_seed(state: tauri::State<'_, StoreState>) -> Result<(), String> {
                 ("2026-02-01", 5500.0),
                 ("2026-03-01", 5400.0),
             ] {
-                seed_pay(d, &id, amt, date);
+                seed_pay(d, &id, amt, date, None);
             }
         }
 
@@ -309,7 +309,7 @@ async fn dev_seed(state: tauri::State<'_, StoreState>) -> Result<(), String> {
             Some("Interest paid periodically"),
         ) {
             for date in ["2025-09-10", "2025-11-10", "2026-01-10", "2026-03-10"] {
-                seed_pay(d, &id, 375.0, date);
+                seed_pay(d, &id, 375.0, date, Some("Interest only"));
             }
         }
 
@@ -324,7 +324,7 @@ async fn dev_seed(state: tauri::State<'_, StoreState>) -> Result<(), String> {
             "2026-10-01",
             Some("Zero-interest, friend"),
         ) {
-            seed_pay(d, &id, 2_000.0, "2026-01-01");
+            seed_pay(d, &id, 2_000.0, "2026-01-01", Some("Part repayment"));
         }
 
         // 5) Suresh — overdue one-time loan (ended in the past, unpaid).
@@ -337,6 +337,54 @@ async fn dev_seed(state: tauri::State<'_, StoreState>) -> Result<(), String> {
             "2025-01-01",
             "2025-06-01",
             Some("Overdue — follow up"),
+        );
+
+        // ---- Longer-term loans ending in 2027 (future-dated, active) ----
+        let kiran = seed_borrower(d, "Kiran Desai", "9811122233", Some("Ahmedabad"));
+        let farah = seed_borrower(d, "Farah Khan", "9700011122", Some("Chennai"));
+        let gopal = seed_borrower(d, "Gopal Iyer", "9622233344", Some("Mysuru"));
+
+        // 6) Kiran — 24-month installment loan ending in 2027, a few paid.
+        if let Some(id) = seed_loan(
+            d,
+            kiran,
+            48_000.0,
+            0.018,
+            "installments",
+            "2025-11-01",
+            "2027-11-01",
+            Some("Two-year plan for shop renovation"),
+        ) {
+            seed_pay(d, &id, 2_864.0, "2025-12-01", Some("Installment 1"));
+            seed_pay(d, &id, 2_828.0, "2026-01-01", Some("Installment 2"));
+            seed_pay(d, &id, 2_792.0, "2026-02-01", None);
+        }
+
+        // 7) Farah — one-time loan due in 2027, interest paid periodically.
+        if let Some(id) = seed_loan(
+            d,
+            farah,
+            30_000.0,
+            0.02,
+            "one_time",
+            "2026-01-15",
+            "2027-01-15",
+            Some("Lump-sum repayment expected at year end"),
+        ) {
+            seed_pay(d, &id, 600.0, "2026-02-15", Some("Monthly interest"));
+            seed_pay(d, &id, 600.0, "2026-03-15", Some("Monthly interest"));
+        }
+
+        // 8) Gopal — zero-interest friendly loan ending in 2027, track-only.
+        let _ = seed_loan(
+            d,
+            gopal,
+            12_000.0,
+            0.0,
+            "one_time",
+            "2026-02-01",
+            "2027-02-01",
+            Some("No interest — close friend, flexible repayment"),
         );
     })
     .await

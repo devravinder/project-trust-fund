@@ -103,7 +103,7 @@ function App() {
   return (
     <>
       <RouterProvider router={router} />
-      <Toaster richColors closeButton position="top-center" duration={5000} />
+      <Toaster richColors closeButton position="top-center" duration={3000} />
     </>
   )
 }
