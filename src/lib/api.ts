@@ -17,6 +17,7 @@ export interface LoanSummary extends Loan {
   outstanding_principal: number
   interest_accrued_to_date: number
   interest_due: number
+  effective_status: LoanStatus
 }
 
 export interface PaymentView extends Payment {

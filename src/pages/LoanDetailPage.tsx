@@ -169,7 +169,7 @@ export function LoanDetailPage() {
           <CardContent className="p-4">
             <p className="text-sm text-muted-foreground">Status</p>
             <p className="text-xl font-bold capitalize">
-              {formatLoanStatus(summary.status)}
+              {formatLoanStatus(summary.effective_status)}
             </p>
           </CardContent>
         </Card>

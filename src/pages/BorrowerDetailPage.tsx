@@ -111,7 +111,8 @@ export function BorrowerDetailPage() {
                     {formatCurrency(l.principal)} · {formatRate(l.monthly_rate)}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    {formatDate(l.start_date)} · {formatLoanStatus(l.status)}
+                    {formatDate(l.start_date)} ·{' '}
+                    {formatLoanStatus(l.effective_status)}
                   </p>
                 </div>
                 <p className="text-sm">

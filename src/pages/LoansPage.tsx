@@ -114,10 +114,10 @@ export function LoansPage() {
                   <span
                     className={cn(
                       'text-xs font-medium capitalize',
-                      statusColor[l.status],
+                      statusColor[l.effective_status],
                     )}
                   >
-                    {formatLoanStatus(l.status)}
+                    {formatLoanStatus(l.effective_status)}
                   </span>
                 </div>
                 <div className="mt-2 flex gap-4 text-sm">

@@ -49,9 +49,9 @@ function NavItems({ orientation }: { orientation: 'side' | 'bottom' }) {
 
 export function AppLayout() {
   return (
-    <div className="flex min-h-screen bg-background text-foreground">
-      {/* Sidebar (desktop) */}
-      <aside className="hidden w-56 shrink-0 flex-col border-r p-4 md:flex">
+    <div className="flex h-screen overflow-hidden bg-background text-foreground">
+      {/* Sidebar (desktop) — scrolls independently */}
+      <aside className="hidden w-56 shrink-0 flex-col overflow-y-auto border-r p-4 md:flex">
         <div className="mb-6 flex items-center gap-3 px-1">
           <img src="/logo.svg?v=8" alt="TrustFund" className="size-12" />
           <div>
@@ -64,15 +64,16 @@ export function AppLayout() {
         </nav>
       </aside>
 
-      {/* Main content */}
-      <div className="flex flex-1 flex-col">
+      {/* Main content column */}
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {/* Compact logo header (mobile only) */}
-        <header className="flex items-center gap-2 border-b p-3 md:hidden">
+        <header className="flex shrink-0 items-center gap-2 border-b p-3 md:hidden">
           <img src="/logo.svg?v=8" alt="TrustFund" className="size-8" />
           <span className="text-base font-bold">TrustFund</span>
         </header>
 
-        <main className="flex-1 p-4 pb-20 md:pb-4">
+        {/* Scrollable content area (independent of the sidebar) */}
+        <main className="flex-1 overflow-y-auto p-4 pb-20 md:pb-4">
           <Outlet />
         </main>
 

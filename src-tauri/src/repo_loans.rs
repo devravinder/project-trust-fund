@@ -22,6 +22,8 @@ pub struct LoanSummary {
     pub interest_accrued_to_date: f64,
     /// Accrued interest not yet collected.
     pub interest_due: f64,
+    /// Derived status (active/overdue/closed/written_off) for display + filter.
+    pub effective_status: String,
 }
 
 fn is_active_loan(d: &Dataset, id: &str) -> bool {
@@ -73,9 +75,10 @@ pub fn loan_term_months(loan: &Loan) -> Option<i64> {
 }
 
 fn summarize(d: &Dataset, loan: &Loan) -> LoanSummary {
+    let today = Local::now().date_naive();
     let recovered = round2(principal_recovered(d, &loan.id));
     let collected = round2(interest_collected(d, &loan.id));
-    let accrued = interest_accrued(loan, Local::now().date_naive());
+    let accrued = interest_accrued(loan, today);
     LoanSummary {
         borrower_name: borrower_name(d, &loan.borrower_id),
         principal_recovered: recovered,
@@ -83,18 +86,20 @@ fn summarize(d: &Dataset, loan: &Loan) -> LoanSummary {
         outstanding_principal: round2(loan.principal - recovered),
         interest_accrued_to_date: accrued,
         interest_due: round2((accrued - collected).max(0.0)),
+        effective_status: effective_status(d, loan, today),
         loan: loan.clone(),
     }
 }
 
 pub fn list(d: &Dataset, status: Option<&str>, search: Option<&str>) -> Vec<LoanSummary> {
     let term = search.map(|s| s.trim().to_lowercase()).unwrap_or_default();
+    let today = Local::now().date_naive();
     let mut out: Vec<LoanSummary> = d
         .loans
         .iter()
         .filter(|l| is_active_loan(d, &l.id))
         .filter(|l| match status {
-            Some(s) if s != "all" => l.status == s,
+            Some(s) if s != "all" => effective_status(d, l, today) == s,
             _ => true,
         })
         .filter(|l| {
@@ -110,6 +115,31 @@ pub fn list(d: &Dataset, status: Option<&str>, search: Option<&str>) -> Vec<Loan
         .collect();
     out.sort_by(|a, b| b.loan.created_at.cmp(&a.loan.created_at));
     out
+}
+
+/// Effective status of a loan: closed/written_off if manually set, else
+/// "overdue" when past end_date with an outstanding balance, else "active".
+pub fn effective_status(d: &Dataset, loan: &Loan, today: NaiveDate) -> String {
+    if loan.status == "closed" || loan.status == "written_off" {
+        return loan.status.clone();
+    }
+    let paid: f64 = d
+        .payments
+        .iter()
+        .filter(|p| p.loan_id == loan.id && !d.deleted_payments.contains(&p.id))
+        .map(|p| p.principal_component)
+        .sum();
+    let outstanding = loan.principal - paid;
+    if outstanding > 0.005 {
+        if let Some(end) = loan.end_date.as_deref() {
+            if let Ok(end_d) = NaiveDate::parse_from_str(end, "%Y-%m-%d") {
+                if end_d < today {
+                    return "overdue".into();
+                }
+            }
+        }
+    }
+    "active".into()
 }
 
 pub fn get(d: &Dataset, id: &str) -> Option<Loan> {
