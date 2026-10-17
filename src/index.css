@@ -95,3 +95,17 @@ body {
   top: 0 !important;
   transform: translate(35%, -35%) !important;
 }
+
+/* Mobile safe-area insets (status bar top, gesture/nav bar bottom).
+   Only applied below the md breakpoint; desktop has no system bar overlap. */
+@media (max-width: 767px) {
+  .tf-safe-top {
+    padding-top: calc(0.75rem + env(safe-area-inset-top));
+  }
+  .tf-safe-content-bottom {
+    padding-bottom: calc(5rem + env(safe-area-inset-bottom));
+  }
+  .tf-safe-nav-bottom {
+    padding-bottom: calc(0.5rem + env(safe-area-inset-bottom));
+  }
+}

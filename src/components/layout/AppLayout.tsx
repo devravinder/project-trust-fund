@@ -66,19 +66,20 @@ export function AppLayout() {
 
       {/* Main content column */}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        {/* Compact logo header (mobile only) */}
-        <header className="flex shrink-0 items-center gap-2 border-b p-3 md:hidden">
+        {/* Compact logo header (mobile only) — padded below the status bar */}
+        <header className="tf-safe-top flex shrink-0 items-center gap-2 border-b px-3 pb-3 md:hidden">
           <img src="/logo.svg?v=8" alt="TrustFund" className="size-8" />
           <span className="text-base font-bold">TrustFund</span>
         </header>
 
-        {/* Scrollable content area (independent of the sidebar) */}
-        <main className="flex-1 overflow-y-auto p-4 pb-20 md:pb-4">
+        {/* Scrollable content area (independent of the sidebar). Extra bottom
+            padding on mobile clears the fixed bottom nav + the device inset. */}
+        <main className="tf-safe-content-bottom flex-1 overflow-y-auto p-4 md:pb-4">
           <Outlet />
         </main>
 
-        {/* Bottom nav (mobile) */}
-        <nav className="fixed inset-x-0 bottom-0 flex justify-around border-t bg-background p-2 md:hidden">
+        {/* Bottom nav (mobile) — padded above the gesture/nav bar */}
+        <nav className="tf-safe-nav-bottom fixed inset-x-0 bottom-0 flex justify-around border-t bg-background px-2 pt-2 md:hidden">
           <NavItems orientation="bottom" />
         </nav>
       </div>
