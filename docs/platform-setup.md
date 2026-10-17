@@ -95,6 +95,15 @@ Generates `src-tauri/gen/android`.
 pnpm run android:init
 ```
 
+**App icon:** after init, make sure the generated project uses TrustFund's icon
+(not the Tauri default) by regenerating and syncing:
+```bash
+pnpm tauri icon public/logo.svg      # (re)generate icons from the logo
+pnpm run android:icons:linux         # copy them into gen/android  (:win on Windows)
+```
+Re-run `android:icons:*` whenever the logo changes. This replaces the scaffolded
+Tauri launcher icons in `gen/android/app/src/main/res/mipmap-*`.
+
 ### 2.4 Manage the emulator (AVD) from the command line
 
 Create an AVD once in Android Studio → **Virtual Device Manager** (e.g. a Pixel

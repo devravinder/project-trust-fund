@@ -20,6 +20,8 @@
     "android:dev": "tauri android dev",
     "android:build": "tauri android build",
     "android:build:apk": "tauri android build --apk",
+    "android:icons:win": "powershell -ExecutionPolicy Bypass -File scripts\\sync-android-icons.ps1",
+    "android:icons:linux": "bash scripts/sync-android-icons.sh",
     "avd:list:win": "powershell -ExecutionPolicy Bypass -File scripts\\avd.ps1 list",
     "avd:start:win": "powershell -ExecutionPolicy Bypass -File scripts\\avd.ps1 start",
     "avd:stop:win": "powershell -ExecutionPolicy Bypass -File scripts\\avd.ps1 stop",
