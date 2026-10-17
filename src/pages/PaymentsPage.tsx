@@ -11,7 +11,7 @@ import { payments, type PaymentView } from '@/lib/api'
 import { PaymentFormDialog } from '@/features/payments/PaymentFormDialog'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useInfiniteList } from '@/lib/useInfiniteList'
-import { InfiniteScrollSentinel } from '@/components/InfiniteScrollSentinel'
+import { VirtualList } from '@/components/VirtualList'
 
 export function PaymentsPage() {
   const [search, setSearch] = useState('')
@@ -48,7 +48,7 @@ export function PaymentsPage() {
   }
 
   return (
-    <div>
+    <div className="flex h-full flex-col">
       <PageHeader
         title="Payments"
         description="Repayments received"
@@ -74,41 +74,49 @@ export function PaymentsPage() {
       ) : items.length === 0 ? (
         <p className="text-muted-foreground">No payments recorded yet.</p>
       ) : (
-        <div className="grid gap-2">
-          {items.map((p) => (
-            <Card key={p.id}>
-              <CardContent className="flex items-center justify-between gap-2 p-4">
-                <button
-                  type="button"
-                  className="flex-1 text-left"
-                  onClick={() => navigate(`/payments/${p.id}`)}
-                >
-                  <p className="font-medium">
-                    {p.borrower_name} · {formatCurrency(p.amount)}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {formatDate(p.paid_date)} · interest{' '}
-                    {formatCurrency(p.interest_component)} · principal{' '}
-                    {formatCurrency(p.principal_component)}
-                  </p>
-                </button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setDeleteTarget(p)}
-                  aria-label="Delete payment"
-                >
-                  <Trash2 />
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
-          <InfiniteScrollSentinel onReach={loadMore} disabled={!hasMore} />
-          {loadingMore && (
-            <p className="py-2 text-center text-sm text-muted-foreground">
-              Loading more…
-            </p>
-          )}
+        <div className="min-h-0 flex-1">
+          <VirtualList
+            items={items}
+            estimateSize={76}
+            onReachEnd={loadMore}
+            hasMore={hasMore}
+            getKey={(p) => p.id}
+            footer={
+              loadingMore ? (
+                <p className="py-2 text-center text-sm text-muted-foreground">
+                  Loading more…
+                </p>
+              ) : null
+            }
+            renderItem={(p) => (
+              <Card>
+                <CardContent className="flex items-center justify-between gap-2 p-4">
+                  <button
+                    type="button"
+                    className="flex-1 text-left"
+                    onClick={() => navigate(`/payments/${p.id}`)}
+                  >
+                    <p className="font-medium">
+                      {p.borrower_name} · {formatCurrency(p.amount)}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {formatDate(p.paid_date)} · interest{' '}
+                      {formatCurrency(p.interest_component)} · principal{' '}
+                      {formatCurrency(p.principal_component)}
+                    </p>
+                  </button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setDeleteTarget(p)}
+                    aria-label="Delete payment"
+                  >
+                    <Trash2 />
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+          />
         </div>
       )}
 

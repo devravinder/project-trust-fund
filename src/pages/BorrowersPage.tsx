@@ -11,7 +11,7 @@ import type { Borrower } from '@/types'
 import { BorrowerFormDialog } from '@/features/borrowers/BorrowerFormDialog'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useInfiniteList } from '@/lib/useInfiniteList'
-import { InfiniteScrollSentinel } from '@/components/InfiniteScrollSentinel'
+import { VirtualList } from '@/components/VirtualList'
 
 export function BorrowersPage() {
   const [search, setSearch] = useState('')
@@ -59,7 +59,7 @@ export function BorrowersPage() {
   }
 
   return (
-    <div>
+    <div className="flex h-full flex-col">
       <PageHeader
         title="Borrowers"
         description="People you lend to"
@@ -87,47 +87,55 @@ export function BorrowersPage() {
           No borrowers yet. Add your first one.
         </p>
       ) : (
-        <div className="grid gap-2">
-          {items.map((b) => (
-            <Card key={b.id}>
-              <CardContent className="flex items-center justify-between p-4">
-                <button
-                  type="button"
-                  className="flex-1 text-left"
-                  onClick={() => navigate(`/borrowers/${b.id}`)}
-                >
-                  <p className="font-medium">{b.name}</p>
-                  {b.phone && (
-                    <p className="text-sm text-muted-foreground">{b.phone}</p>
-                  )}
-                </button>
-                <div className="flex gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleEdit(b)}
-                    aria-label={`Edit ${b.name}`}
+        <div className="min-h-0 flex-1">
+          <VirtualList
+            items={items}
+            estimateSize={72}
+            onReachEnd={loadMore}
+            hasMore={hasMore}
+            getKey={(b) => b.id}
+            footer={
+              loadingMore ? (
+                <p className="py-2 text-center text-sm text-muted-foreground">
+                  Loading more…
+                </p>
+              ) : null
+            }
+            renderItem={(b) => (
+              <Card>
+                <CardContent className="flex items-center justify-between p-4">
+                  <button
+                    type="button"
+                    className="flex-1 text-left"
+                    onClick={() => navigate(`/borrowers/${b.id}`)}
                   >
-                    <Pencil />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setDeleteTarget(b)}
-                    aria-label={`Delete ${b.name}`}
-                  >
-                    <Trash2 />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-          <InfiniteScrollSentinel onReach={loadMore} disabled={!hasMore} />
-          {loadingMore && (
-            <p className="py-2 text-center text-sm text-muted-foreground">
-              Loading more…
-            </p>
-          )}
+                    <p className="font-medium">{b.name}</p>
+                    {b.phone && (
+                      <p className="text-sm text-muted-foreground">{b.phone}</p>
+                    )}
+                  </button>
+                  <div className="flex gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleEdit(b)}
+                      aria-label={`Edit ${b.name}`}
+                    >
+                      <Pencil />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setDeleteTarget(b)}
+                      aria-label={`Delete ${b.name}`}
+                    >
+                      <Trash2 />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          />
         </div>
       )}
 

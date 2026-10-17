@@ -17,7 +17,7 @@ import { loans, type LoanSummary } from '@/lib/api'
 import type { LoanStatus } from '@/types'
 import { LoanFormDialog } from '@/features/loans/LoanFormDialog'
 import { useInfiniteList } from '@/lib/useInfiniteList'
-import { InfiniteScrollSentinel } from '@/components/InfiniteScrollSentinel'
+import { VirtualList } from '@/components/VirtualList'
 
 const FILTERS: { key: LoanStatus | 'all'; label: string }[] = [
   { key: 'active', label: 'Active' },
@@ -57,7 +57,7 @@ export function LoansPage() {
     )
 
   return (
-    <div>
+    <div className="flex h-full flex-col">
       <PageHeader
         title="Loans"
         description="Track active and closed loans"
@@ -96,52 +96,62 @@ export function LoansPage() {
       ) : items.length === 0 ? (
         <p className="text-muted-foreground">No loans found.</p>
       ) : (
-        <div className="grid gap-2">
-          {items.map((l) => (
-            <Card
-              key={l.id}
-              className="cursor-pointer transition-colors hover:bg-accent"
-              onClick={() =>
-                navigate(`/loans/${l.id}`, { state: { from: '/loans' } })
-              }
-            >
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="font-medium">{l.borrower_name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {formatCurrency(l.principal)} ·{' '}
-                      {formatRate(l.monthly_rate)} · {formatDate(l.start_date)}
-                    </p>
+        <div className="min-h-0 flex-1">
+          <VirtualList
+            items={items}
+            estimateSize={92}
+            onReachEnd={loadMore}
+            hasMore={hasMore}
+            getKey={(l) => l.id}
+            footer={
+              loadingMore ? (
+                <p className="py-2 text-center text-sm text-muted-foreground">
+                  Loading more…
+                </p>
+              ) : null
+            }
+            renderItem={(l) => (
+              <Card
+                className="cursor-pointer transition-colors hover:bg-accent"
+                onClick={() =>
+                  navigate(`/loans/${l.id}`, { state: { from: '/loans' } })
+                }
+              >
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="font-medium">{l.borrower_name}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {formatCurrency(l.principal)} ·{' '}
+                        {formatRate(l.monthly_rate)} ·{' '}
+                        {formatDate(l.start_date)}
+                      </p>
+                    </div>
+                    <span
+                      className={cn(
+                        'text-xs font-medium capitalize',
+                        statusColor[l.effective_status],
+                      )}
+                    >
+                      {formatLoanStatus(l.effective_status)}
+                    </span>
                   </div>
-                  <span
-                    className={cn(
-                      'text-xs font-medium capitalize',
-                      statusColor[l.effective_status],
-                    )}
-                  >
-                    {formatLoanStatus(l.effective_status)}
-                  </span>
-                </div>
-                <div className="mt-2 flex gap-4 text-sm">
-                  <span>
-                    <span className="text-muted-foreground">Outstanding: </span>
-                    {formatCurrency(l.outstanding_principal)}
-                  </span>
-                  <span>
-                    <span className="text-muted-foreground">Interest: </span>
-                    {formatCurrency(l.interest_collected)}
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-          <InfiniteScrollSentinel onReach={loadMore} disabled={!hasMore} />
-          {loadingMore && (
-            <p className="py-2 text-center text-sm text-muted-foreground">
-              Loading more…
-            </p>
-          )}
+                  <div className="mt-2 flex gap-4 text-sm">
+                    <span>
+                      <span className="text-muted-foreground">
+                        Outstanding:{' '}
+                      </span>
+                      {formatCurrency(l.outstanding_principal)}
+                    </span>
+                    <span>
+                      <span className="text-muted-foreground">Interest: </span>
+                      {formatCurrency(l.interest_collected)}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          />
         </div>
       )}
 
