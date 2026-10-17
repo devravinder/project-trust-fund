@@ -106,6 +106,8 @@ export const db = {
 
 export const borrowers = {
   list: (search?: string) => invoke<Borrower[]>('borrowers_list', { search }),
+  page: (limit: number, offset: number, search?: string) =>
+    invoke<Borrower[]>('borrowers_page', { search, limit, offset }),
   get: (id: string) => invoke<Borrower | null>('borrower_get', { id }),
   create: (input: BorrowerInput) =>
     invoke<Borrower>('borrower_create', { input }),
@@ -121,6 +123,12 @@ export const borrowers = {
 export const loans = {
   list: (status?: LoanStatus | 'all', search?: string) =>
     invoke<LoanSummary[]>('loans_list', { status, search }),
+  page: (
+    limit: number,
+    offset: number,
+    status?: LoanStatus | 'all',
+    search?: string,
+  ) => invoke<LoanSummary[]>('loans_page', { status, search, limit, offset }),
   get: (id: string) => invoke<Loan | null>('loan_get', { id }),
   summary: (id: string) => invoke<LoanSummary | null>('loan_summary', { id }),
   create: (input: LoanInput) => invoke<Loan>('loan_create', { input }),
@@ -136,6 +144,8 @@ export const loans = {
 
 export const payments = {
   list: (search?: string) => invoke<PaymentView[]>('payments_list', { search }),
+  page: (limit: number, offset: number, search?: string) =>
+    invoke<PaymentView[]>('payments_page', { search, limit, offset }),
   get: (id: string) => invoke<PaymentDetail | null>('payment_get', { id }),
   forLoan: (loanId: string) =>
     invoke<Payment[]>('payments_for_loan', { loanId }),

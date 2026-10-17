@@ -60,6 +60,28 @@ pub fn list(d: &Dataset, search: Option<&str>) -> Vec<PaymentView> {
     out
 }
 
+/// A page of payments, newest-first by paid_date, filtered by borrower search.
+pub fn list_page(
+    d: &Dataset,
+    search: Option<&str>,
+    limit: i64,
+    offset: i64,
+) -> Vec<PaymentView> {
+    let term = search.map(|s| s.trim().to_lowercase()).unwrap_or_default();
+    let mut out: Vec<PaymentView> = active(d)
+        .map(|p| PaymentView {
+            payment: p.clone(),
+            borrower_name: borrower_name_for_loan(d, &p.loan_id),
+        })
+        .filter(|v| term.is_empty() || v.borrower_name.to_lowercase().contains(&term))
+        .collect();
+    out.sort_by(|a, b| b.payment.paid_date.cmp(&a.payment.paid_date));
+    out.into_iter()
+        .skip(offset.max(0) as usize)
+        .take(limit.max(0) as usize)
+        .collect()
+}
+
 /// Single payment with borrower + loan context for the detail view.
 pub fn get_detail(d: &Dataset, id: &str) -> Option<PaymentDetail> {
     let p = active(d).find(|p| p.id == id)?.clone();

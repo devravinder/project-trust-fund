@@ -10,31 +10,32 @@ import { borrowers } from '@/lib/api'
 import type { Borrower } from '@/types'
 import { BorrowerFormDialog } from '@/features/borrowers/BorrowerFormDialog'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { useInfiniteList } from '@/lib/useInfiniteList'
+import { InfiniteScrollSentinel } from '@/components/InfiniteScrollSentinel'
 
 export function BorrowersPage() {
-  const [items, setItems] = useState<Borrower[]>([])
   const [search, setSearch] = useState('')
-  const [loading, setLoading] = useState(true)
+  const [debounced, setDebounced] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Borrower | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Borrower | null>(null)
   const navigate = useNavigate()
 
-  const load = useCallback(async (term: string) => {
-    setLoading(true)
-    try {
-      setItems(await borrowers.list(term || undefined))
-    } catch (e) {
-      toast.error(String(e))
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
   useEffect(() => {
-    const t = setTimeout(() => void load(search), 250)
+    const t = setTimeout(() => setDebounced(search), 250)
     return () => clearTimeout(t)
-  }, [search, load])
+  }, [search])
+
+  const fetchPage = useCallback(
+    (limit: number, offset: number) =>
+      borrowers.page(limit, offset, debounced || undefined),
+    [debounced],
+  )
+
+  const { items, loading, loadingMore, hasMore, loadMore, reload } =
+    useInfiniteList<Borrower>(fetchPage, [debounced], (e) =>
+      toast.error(String(e)),
+    )
 
   const handleAdd = () => {
     setEditing(null)
@@ -51,7 +52,7 @@ export function BorrowersPage() {
     try {
       await borrowers.remove(deleteTarget.id)
       toast.success('Borrower deleted')
-      void load(search)
+      void reload()
     } catch (e) {
       toast.error(String(e))
     }
@@ -121,6 +122,12 @@ export function BorrowersPage() {
               </CardContent>
             </Card>
           ))}
+          <InfiniteScrollSentinel onReach={loadMore} disabled={!hasMore} />
+          {loadingMore && (
+            <p className="py-2 text-center text-sm text-muted-foreground">
+              Loading more…
+            </p>
+          )}
         </div>
       )}
 
@@ -128,7 +135,7 @@ export function BorrowersPage() {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         borrower={editing}
-        onSaved={() => void load(search)}
+        onSaved={() => void reload()}
       />
 
       <ConfirmDialog

@@ -10,37 +10,38 @@ import { formatCurrency, formatDate } from '@/lib/format'
 import { payments, type PaymentView } from '@/lib/api'
 import { PaymentFormDialog } from '@/features/payments/PaymentFormDialog'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { useInfiniteList } from '@/lib/useInfiniteList'
+import { InfiniteScrollSentinel } from '@/components/InfiniteScrollSentinel'
 
 export function PaymentsPage() {
-  const [items, setItems] = useState<PaymentView[]>([])
   const [search, setSearch] = useState('')
-  const [loading, setLoading] = useState(true)
+  const [debounced, setDebounced] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<PaymentView | null>(null)
   const navigate = useNavigate()
 
-  const load = useCallback(async (term: string) => {
-    setLoading(true)
-    try {
-      setItems(await payments.list(term || undefined))
-    } catch (e) {
-      toast.error(String(e))
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
   useEffect(() => {
-    const t = setTimeout(() => void load(search), 250)
+    const t = setTimeout(() => setDebounced(search), 250)
     return () => clearTimeout(t)
-  }, [search, load])
+  }, [search])
+
+  const fetchPage = useCallback(
+    (limit: number, offset: number) =>
+      payments.page(limit, offset, debounced || undefined),
+    [debounced],
+  )
+
+  const { items, loading, loadingMore, hasMore, loadMore, reload } =
+    useInfiniteList<PaymentView>(fetchPage, [debounced], (e) =>
+      toast.error(String(e)),
+    )
 
   const confirmDelete = async () => {
     if (!deleteTarget) return
     try {
       await payments.remove(deleteTarget.id)
       toast.success('Payment deleted')
-      void load(search)
+      void reload()
     } catch (e) {
       toast.error(String(e))
     }
@@ -102,13 +103,19 @@ export function PaymentsPage() {
               </CardContent>
             </Card>
           ))}
+          <InfiniteScrollSentinel onReach={loadMore} disabled={!hasMore} />
+          {loadingMore && (
+            <p className="py-2 text-center text-sm text-muted-foreground">
+              Loading more…
+            </p>
+          )}
         </div>
       )}
 
       <PaymentFormDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        onSaved={() => void load(search)}
+        onSaved={() => void reload()}
       />
 
       <ConfirmDialog

@@ -404,6 +404,18 @@ async fn borrowers_list(
 }
 
 #[tauri::command]
+async fn borrowers_page(
+    state: tauri::State<'_, StoreState>,
+    search: Option<String>,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<Borrower>, String> {
+    data::page_borrowers(&state, search, limit, offset)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn borrower_get(
     state: tauri::State<'_, StoreState>,
     id: String,
@@ -468,6 +480,19 @@ async fn loans_list(
     })
     .await
     .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn loans_page(
+    state: tauri::State<'_, StoreState>,
+    status: Option<String>,
+    search: Option<String>,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<LoanSummary>, String> {
+    data::page_loans(&state, status, search, limit, offset)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -548,6 +573,18 @@ async fn payments_list(
     search: Option<String>,
 ) -> Result<Vec<PaymentView>, String> {
     data::read(&state, |d| repo_payments::list(d, search.as_deref()))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn payments_page(
+    state: tauri::State<'_, StoreState>,
+    search: Option<String>,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<PaymentView>, String> {
+    data::page_payments(&state, search, limit, offset)
         .await
         .map_err(|e| e.to_string())
 }
@@ -689,12 +726,14 @@ pub fn run() {
             dev_seed,
             clear_all_data,
             borrowers_list,
+            borrowers_page,
             borrower_get,
             borrower_create,
             borrower_update,
             borrower_delete,
             borrower_total_outstanding,
             loans_list,
+            loans_page,
             loan_get,
             loan_summary,
             loan_create,
@@ -703,6 +742,7 @@ pub fn run() {
             loan_delete_with_related,
             loan_schedule,
             payments_list,
+            payments_page,
             payments_for_loan,
             payment_get,
             payment_create,

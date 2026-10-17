@@ -32,6 +32,31 @@ pub fn list(d: &Dataset, search: Option<&str>) -> Vec<Borrower> {
     out
 }
 
+/// A page of borrowers, newest-first by updated_at, filtered by search.
+pub fn list_page(d: &Dataset, search: Option<&str>, limit: i64, offset: i64) -> Vec<Borrower> {
+    let term = search.map(|s| s.trim().to_lowercase()).unwrap_or_default();
+    let mut out: Vec<Borrower> = active(d)
+        .filter(|b| {
+            if term.is_empty() {
+                true
+            } else {
+                b.name.to_lowercase().contains(&term)
+                    || b
+                        .phone
+                        .as_deref()
+                        .map(|p| p.to_lowercase().contains(&term))
+                        .unwrap_or(false)
+            }
+        })
+        .cloned()
+        .collect();
+    out.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    out.into_iter()
+        .skip(offset.max(0) as usize)
+        .take(limit.max(0) as usize)
+        .collect()
+}
+
 pub fn get(d: &Dataset, id: &str) -> Option<Borrower> {
     active(d).find(|b| b.id == id).cloned()
 }

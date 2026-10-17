@@ -367,6 +367,222 @@ where
 
 
 
+// ---- Paginated loading (keeps Turso transfer bounded to one page) ----
+//
+// For Turso we fetch only the requested page of the primary table, ordered
+// newest-first by updated_at — never the whole table. For JSON we load the
+// (small) file and slice in memory.
+
+/// A page of borrowers (newest-first).
+pub async fn page_borrowers(
+    state: &StoreState,
+    search: Option<String>,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<crate::models::Borrower>, StoreError> {
+    state
+        .with_backend(|b| async move {
+            match b {
+                BackendRef::Json(path) => {
+                    let d = json_load(&path)?;
+                    Ok(crate::repo_borrowers::list_page(
+                        &d,
+                        search.as_deref(),
+                        limit,
+                        offset,
+                    ))
+                }
+                BackendRef::Turso(c) => {
+                    let like = search
+                        .as_deref()
+                        .map(|s| s.trim())
+                        .filter(|s| !s.is_empty())
+                        .map(|s| format!("%{s}%"));
+                    let (where_sql, mut args): (String, Vec<Value>) = match &like {
+                        Some(pat) => (
+                            "AND (name LIKE ? OR phone LIKE ?)".into(),
+                            vec![arg_text(pat), arg_text(pat)],
+                        ),
+                        None => (String::new(), vec![]),
+                    };
+                    args.push(arg_int(limit));
+                    args.push(arg_int(offset));
+                    let sql = format!(
+                        "SELECT {BORROWER_COLS} FROM borrowers \
+                         WHERE deleted = 0 {where_sql} \
+                         ORDER BY updated_at DESC LIMIT ? OFFSET ?"
+                    );
+                    let rows = c.query(&sql, args).await.map_err(StoreError::Turso)?;
+                    Ok(rows.iter().map(row_to_borrower).collect())
+                }
+            }
+        })
+        .await
+}
+
+/// A page of payments (newest-first by paid_date) with borrower names, as
+/// PaymentView rows.
+pub async fn page_payments(
+    state: &StoreState,
+    search: Option<String>,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<crate::repo_payments::PaymentView>, StoreError> {
+    state
+        .with_backend(|b| async move {
+            match b {
+                BackendRef::Json(path) => {
+                    let d = json_load(&path)?;
+                    Ok(crate::repo_payments::list_page(
+                        &d,
+                        search.as_deref(),
+                        limit,
+                        offset,
+                    ))
+                }
+                BackendRef::Turso(c) => {
+                    // Join payments -> loans -> borrowers for the page.
+                    let like = search
+                        .as_deref()
+                        .map(|s| s.trim())
+                        .filter(|s| !s.is_empty())
+                        .map(|s| format!("%{s}%"));
+                    let (where_sql, mut args): (String, Vec<Value>) = match &like {
+                        Some(pat) => {
+                            ("AND b.name LIKE ?".into(), vec![arg_text(pat)])
+                        }
+                        None => (String::new(), vec![]),
+                    };
+                    args.push(arg_int(limit));
+                    args.push(arg_int(offset));
+                    let sql = format!(
+                        "SELECT p.id, p.loan_id, p.amount, p.interest_component, \
+                            p.principal_component, p.paid_date, p.note, p.created_at, \
+                            p.updated_at, b.name \
+                         FROM payments p \
+                         JOIN loans l ON l.id = p.loan_id \
+                         JOIN borrowers b ON b.id = l.borrower_id \
+                         WHERE p.deleted = 0 {where_sql} \
+                         ORDER BY p.paid_date DESC, p.created_at DESC \
+                         LIMIT ? OFFSET ?"
+                    );
+                    let rows = c.query(&sql, args).await.map_err(StoreError::Turso)?;
+                    Ok(rows
+                        .iter()
+                        .map(|r| crate::repo_payments::PaymentView {
+                            payment: row_to_payment(r),
+                            borrower_name: r
+                                .get(9)
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string(),
+                        })
+                        .collect())
+                }
+            }
+        })
+        .await
+}
+
+/// A page of loan summaries (newest-first by updated_at), enriched with
+/// balances / effective status. For Turso we fetch only the page's loans plus
+/// those loans' payments (not the whole tables).
+pub async fn page_loans(
+    state: &StoreState,
+    status: Option<String>,
+    search: Option<String>,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<crate::repo_loans::LoanSummary>, StoreError> {
+    state
+        .with_backend(|b| async move {
+            match b {
+                BackendRef::Json(path) => {
+                    let d = json_load(&path)?;
+                    Ok(crate::repo_loans::list_page(
+                        &d,
+                        status.as_deref(),
+                        search.as_deref(),
+                        limit,
+                        offset,
+                    ))
+                }
+                BackendRef::Turso(c) => {
+                    // 1) Page of loans joined to borrower (for name + search).
+                    let like = search
+                        .as_deref()
+                        .map(|s| s.trim())
+                        .filter(|s| !s.is_empty())
+                        .map(|s| format!("%{s}%"));
+                    let mut where_sql = String::new();
+                    let mut args: Vec<Value> = vec![];
+                    if let Some(pat) = &like {
+                        where_sql.push_str(" AND b.name LIKE ?");
+                        args.push(arg_text(pat));
+                    }
+                    args.push(arg_int(limit));
+                    args.push(arg_int(offset));
+                    let sql = format!(
+                        "SELECT l.id, l.borrower_id, l.principal, l.monthly_rate, \
+                            l.interest_type, l.repayment_mode, l.end_date, l.start_date, \
+                            l.status, l.note, l.created_at, l.updated_at, b.name \
+                         FROM loans l JOIN borrowers b ON b.id = l.borrower_id \
+                         WHERE l.deleted = 0 {where_sql} \
+                         ORDER BY l.updated_at DESC LIMIT ? OFFSET ?"
+                    );
+                    let rows = c.query(&sql, args).await.map_err(StoreError::Turso)?;
+
+                    // Build a mini-dataset of just these loans + their borrowers.
+                    let mut mini = Dataset::default();
+                    let mut loan_ids: Vec<String> = Vec::new();
+                    for r in &rows {
+                        let loan = row_to_loan(r);
+                        loan_ids.push(loan.id.clone());
+                        // borrower name is col 12; synthesize a borrower record.
+                        let bname = r.get(12).and_then(|v| v.as_str()).unwrap_or("");
+                        if !mini.borrowers.iter().any(|bo| bo.id == loan.borrower_id) {
+                            mini.borrowers.push(crate::models::Borrower {
+                                id: loan.borrower_id.clone(),
+                                name: bname.to_string(),
+                                phone: None,
+                                address: None,
+                                photo_path: None,
+                                notes: None,
+                                created_at: String::new(),
+                                updated_at: String::new(),
+                            });
+                        }
+                        mini.loans.push(loan);
+                    }
+
+                    // 2) Fetch payments for just these loans (status filter applies
+                    //    after enrichment, so we need their payments to compute).
+                    if !loan_ids.is_empty() {
+                        let placeholders =
+                            loan_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+                        let psql = format!(
+                            "SELECT {PAYMENT_COLS} FROM payments \
+                             WHERE deleted = 0 AND loan_id IN ({placeholders})"
+                        );
+                        let pargs: Vec<Value> =
+                            loan_ids.iter().map(|id| arg_text(id)).collect();
+                        let prows =
+                            c.query(&psql, pargs).await.map_err(StoreError::Turso)?;
+                        mini.payments = prows.iter().map(row_to_payment).collect();
+                    }
+
+                    // 3) Enrich + apply status filter, preserving page order.
+                    Ok(crate::repo_loans::summarize_in_order(
+                        &mini,
+                        &loan_ids,
+                        status.as_deref(),
+                    ))
+                }
+            }
+        })
+        .await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

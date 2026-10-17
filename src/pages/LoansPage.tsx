@@ -16,6 +16,8 @@ import {
 import { loans, type LoanSummary } from '@/lib/api'
 import type { LoanStatus } from '@/types'
 import { LoanFormDialog } from '@/features/loans/LoanFormDialog'
+import { useInfiniteList } from '@/lib/useInfiniteList'
+import { InfiniteScrollSentinel } from '@/components/InfiniteScrollSentinel'
 
 const FILTERS: { key: LoanStatus | 'all'; label: string }[] = [
   { key: 'active', label: 'Active' },
@@ -32,28 +34,27 @@ const statusColor: Record<string, string> = {
 }
 
 export function LoansPage() {
-  const [items, setItems] = useState<LoanSummary[]>([])
   const [filter, setFilter] = useState<LoanStatus | 'all'>('active')
   const [search, setSearch] = useState('')
-  const [loading, setLoading] = useState(true)
+  const [debounced, setDebounced] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const navigate = useNavigate()
 
-  const load = useCallback(async (status: LoanStatus | 'all', term: string) => {
-    setLoading(true)
-    try {
-      setItems(await loans.list(status, term || undefined))
-    } catch (e) {
-      toast.error(String(e))
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
   useEffect(() => {
-    const t = setTimeout(() => void load(filter, search), 250)
+    const t = setTimeout(() => setDebounced(search), 250)
     return () => clearTimeout(t)
-  }, [filter, search, load])
+  }, [search])
+
+  const fetchPage = useCallback(
+    (limit: number, offset: number) =>
+      loans.page(limit, offset, filter, debounced || undefined),
+    [filter, debounced],
+  )
+
+  const { items, loading, loadingMore, hasMore, loadMore, reload } =
+    useInfiniteList<LoanSummary>(fetchPage, [filter, debounced], (e) =>
+      toast.error(String(e)),
+    )
 
   return (
     <div>
@@ -100,7 +101,9 @@ export function LoansPage() {
             <Card
               key={l.id}
               className="cursor-pointer transition-colors hover:bg-accent"
-              onClick={() => navigate(`/loans/${l.id}`, { state: { from: '/loans' } })}
+              onClick={() =>
+                navigate(`/loans/${l.id}`, { state: { from: '/loans' } })
+              }
             >
               <CardContent className="p-4">
                 <div className="flex items-start justify-between">
@@ -133,13 +136,19 @@ export function LoansPage() {
               </CardContent>
             </Card>
           ))}
+          <InfiniteScrollSentinel onReach={loadMore} disabled={!hasMore} />
+          {loadingMore && (
+            <p className="py-2 text-center text-sm text-muted-foreground">
+              Loading more…
+            </p>
+          )}
         </div>
       )}
 
       <LoanFormDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        onSaved={() => void load(filter, search)}
+        onSaved={() => void reload()}
       />
     </div>
   )

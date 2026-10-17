@@ -117,6 +117,59 @@ pub fn list(d: &Dataset, status: Option<&str>, search: Option<&str>) -> Vec<Loan
     out
 }
 
+/// A page of loan summaries, newest-first by updated_at, with status + search
+/// filters, sliced to [offset, offset+limit). Used by the JSON backend.
+pub fn list_page(
+    d: &Dataset,
+    status: Option<&str>,
+    search: Option<&str>,
+    limit: i64,
+    offset: i64,
+) -> Vec<LoanSummary> {
+    let term = search.map(|s| s.trim().to_lowercase()).unwrap_or_default();
+    let today = Local::now().date_naive();
+    let mut filtered: Vec<&Loan> = d
+        .loans
+        .iter()
+        .filter(|l| is_active_loan(d, &l.id))
+        .filter(|l| match status {
+            Some(s) if s != "all" => effective_status(d, l, today) == s,
+            _ => true,
+        })
+        .filter(|l| {
+            term.is_empty()
+                || borrower_name(d, &l.borrower_id).to_lowercase().contains(&term)
+        })
+        .collect();
+    filtered.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    filtered
+        .into_iter()
+        .skip(offset.max(0) as usize)
+        .take(limit.max(0) as usize)
+        .map(|l| summarize(d, l))
+        .collect()
+}
+
+/// Enrich a specific ordered set of loan ids (already a page), optionally
+/// filtering by effective status. Preserves the given order. Used by the Turso
+/// backend after it fetches a page of loans + their payments.
+pub fn summarize_in_order(
+    d: &Dataset,
+    loan_ids: &[String],
+    status: Option<&str>,
+) -> Vec<LoanSummary> {
+    let today = Local::now().date_naive();
+    loan_ids
+        .iter()
+        .filter_map(|id| d.loans.iter().find(|l| &l.id == id))
+        .filter(|l| match status {
+            Some(s) if s != "all" => effective_status(d, l, today) == s,
+            _ => true,
+        })
+        .map(|l| summarize(d, l))
+        .collect()
+}
+
 /// Effective status of a loan: closed/written_off if manually set, else
 /// "overdue" when past end_date with an outstanding balance, else "active".
 pub fn effective_status(d: &Dataset, loan: &Loan, today: NaiveDate) -> String {
